@@ -1,4 +1,4 @@
-module github.com/shreyas44/go-graphql
+module github.com/shreyas44/groot
 
 go 1.15
 

@@ -1,24 +1,28 @@
-package gql
+package groot
 
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/graphql-go/graphql"
 )
 
-func GetType(gType interface{}) (reflect.Type, error) {
-	reflectType := reflect.TypeOf(gType)
+func GetType(t interface{}) (graphql.Type, error) {
+	reflectType :=  reflect.TypeOf(t)
 
 	if reflectType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("%s is not a struct", reflectType.Name())
 	}
 
-	return reflectType, nil
+	field := NewType(reflectType)
+
+	return field.Type(), nil
 }
 
-func GetTypes(gTypes ...interface{}) ([]reflect.Type, error) {
-	reflectTypes := []reflect.Type{}
+func GetTypes(types ...interface{}) ([]graphql.Type, error) {
+	reflectTypes := []graphql.Type{}
 
-	for _, gType := range gTypes {
+	for _, gType := range types {
 		reflectType, err := GetType(gType)
 
 		if err != nil {

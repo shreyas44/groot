@@ -1,4 +1,4 @@
-package gql
+package groot
 
 import (
 	"reflect"
@@ -9,6 +9,21 @@ import (
 type SchemaConfig struct {
 	Types []reflect.Type
 	CamelCase *bool
+}
+
+type GrootSchema struct {
+	gTypes []GrootType
+	relationQueue *RelationQueue
+	config SchemaConfig
+}
+
+func (schema *GrootSchema) GetSchema() graphql.Schema {
+	return graphql.Schema{}
+}
+
+func (schema *GrootSchema) AddType(t GrootType) {
+	schema.gTypes = append(schema.gTypes, t)
+	schema.relationQueue.dispatch()
 }
 
 func NewSchema(config SchemaConfig) graphql.Schema {

@@ -1,4 +1,4 @@
-package gql
+package groot
 
 import (
 	"github.com/graphql-go/handler"
