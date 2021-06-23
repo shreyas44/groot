@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	graphqlTypes map[reflect.Type]graphql.Type
-	types        map[string]*graphql.Type
+	graphqlTypes      map[reflect.Type]graphql.Type
+	graphqlInputTypes map[reflect.Type]graphql.Input
+	types             map[string]*graphql.Type
 )
 
 func init() {
@@ -24,6 +25,17 @@ func init() {
 	)
 
 	graphqlTypes = map[reflect.Type]graphql.Type{
+		reflect.TypeOf(gstring):    graphql.NewNonNull(graphql.String),
+		reflect.TypeOf(gint):       graphql.NewNonNull(graphql.Int),
+		reflect.TypeOf(gfloat):     graphql.NewNonNull(graphql.Float),
+		reflect.TypeOf(gbool):      graphql.NewNonNull(graphql.Boolean),
+		reflect.TypeOf(nullString): graphql.String,
+		reflect.TypeOf(nullInt):    graphql.Int,
+		reflect.TypeOf(nullFloat):  graphql.Float,
+		reflect.TypeOf(nullBool):   graphql.Boolean,
+	}
+
+	graphqlInputTypes = map[reflect.Type]graphql.Input{
 		reflect.TypeOf(gstring):    graphql.NewNonNull(graphql.String),
 		reflect.TypeOf(gint):       graphql.NewNonNull(graphql.Int),
 		reflect.TypeOf(gfloat):     graphql.NewNonNull(graphql.Float),
