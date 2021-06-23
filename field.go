@@ -1,101 +1,91 @@
 package groot
 
 import (
-	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/graphql-go/graphql"
 )
 
-type GrootField struct {
-	t GrootType
-	field reflect.StructField
+type Field struct {
+	Name              string
+	Description       string
+	DeprecationReason string
+	Type              graphql.Type
+	Resolve           func(p graphql.ResolveParams) (interface{}, error)
+	field             *graphql.Field
 }
 
-// Get an instance of graphql.Field
-func (f *GrootField) Field() graphql.Field {
-	return graphql.Field{
-		Type: f.Type(),
-		Resolve: f.Resolver(),
-		DeprecationReason: f.field.Tag.Get("deprecate"),
-		Description: f.field.Tag.Get("description"),
+func (field *Field) GraphQLType() *graphql.Field {
+	if field.field != nil {
+		return field.field
 	}
+
+	field.field = &graphql.Field{
+		Name:              field.Name,
+		Type:              field.Type,
+		Description:       field.Description,
+		Resolve:           field.Resolve,
+		DeprecationReason: field.DeprecationReason,
+	}
+
+	return field.field
 }
 
-// Get the graphql.Type for field
-func (f *GrootField) Type() graphql.Type {
-	return types[f.field.Type.Name()]
+func test(p graphql.ResolveParams) (interface{}, error) {
+	return "world", nil
 }
 
-// Get the resolver for field. Gets default resovler if no custom resolver is set
-func (f *GrootField) Resolver() graphql.FieldResolveFn {
-	s := f.t._struct
-	resolver, ok := s.MethodByName("Resolve" + f.field.Type.Name())
+func NewField(structField reflect.StructField) *Field {
+	var name string
+	var description string
+	var depractionReason string
 
-	if !ok {
-		// default resolver
-		return func(p graphql.ResolveParams) (interface{}, error) {
-			return reflect.ValueOf(p.Source).FieldByName(f.field.Type.Name()).Interface(), nil
-		}
+	if ignoreTag := structField.Tag.Get("groot_ignore"); ignoreTag == "true" {
+		return nil
 	}
 
-	// check resolver type
-
-	numOut := resolver.Func.Type().NumOut()
-	if numOut != 2 {
-		msg := fmt.Sprintf(
-			"resolver for %v must have the return 2 values of type (%v, error), returned only %d value", 
-			f.field.Type.Name(), 
-			f.field.Type.Name(), 
-			numOut,
-		)
-		panic(msg)
+	if nameTag := structField.Tag.Get("json"); nameTag != "" {
+		name = nameTag
+	} else {
+		name = structField.Name
 	}
 
-	fReturnType := resolver.Func.Type().Out(0)
-	sReturnType := resolver.Func.Type().Out(1)
-
-	if fReturnType != f.field.Type || sReturnType != reflect.TypeOf(new(error)) {
-		msg := fmt.Sprintf(
-			"resolver for %v must have a return type of (%v, error), got (%v, %v)", 
-			f.field.Type.Name(), 
-			f.field.Type.Name(), 
-			fReturnType, 
-			sReturnType,
-		)
-
-		panic(msg)
+	if descTag := structField.Tag.Get("description"); descTag != "" {
+		description = descTag
 	}
 
-	return func(p graphql.ResolveParams) (interface{}, error) {
-		args := []reflect.Value{}
-
-		// add context to args
-		args = append(args, reflect.ValueOf(p.Context))
-
-		// add input args to args
-		response := resolver.Func.Call(args)
-
-		return response[0], response[1].Interface().(error)
+	if deprecate := structField.Tag.Get("deprecate"); deprecate != "" {
+		depractionReason = deprecate
 	}
+
+	graphqlType, ok := graphqlTypes[structField.Type]
+	if structFieldType := structField.Type; !ok && structFieldType.Kind() == reflect.Struct {
+		graphqlTypes[structField.Type] = nil
+		object := NewObject(structFieldType)
+		graphqlType = object.GraphQLType()
+	}
+
+	field := &Field{
+		Name:              name,
+		Description:       description,
+		Type:              graphqlType,
+		Resolve:           test,
+		DeprecationReason: depractionReason,
+	}
+
+	// hydrate field.field with *graphql.Field
+	field.GraphQLType()
+
+	return field
 }
 
-// Get the field name of field
-func (f *GrootField) Name(config ObjectConfig) string {
-	if name := f.field.Tag.Get("json"); name != "" {
-		return name
-	} 
+func FieldsFromFields(fields []*Field) []*graphql.Field {
+	graphqlFields := []*graphql.Field{}
 
-	name := f.field.Type.Name()
-
-	if config.CamelCase {
-		name = strings.ToLower(string(name[0])) + name[1:]
+	for _, field := range fields {
+		graphqlField := field.GraphQLType()
+		graphqlFields = append(graphqlFields, graphqlField)
 	}
-	
-	return name
-}
 
-func NewField(t reflect.Type) *GrootField {
-	return nil
+	return graphqlFields
 }

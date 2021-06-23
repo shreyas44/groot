@@ -3,135 +3,83 @@ package groot
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/graphql-go/graphql"
 )
 
-var types = map[string]graphql.Type{
-	"string": graphql.String,
-	"int": graphql.Int,
-	"float32": graphql.Float,
-	"bool": graphql.Boolean,
+type Object struct {
+	Name        string
+	Description string
+	object      *graphql.Object
+	fields      []*Field
+	interfaces  []*Interface
 }
 
-func GetArrayGType(t reflect.Type) graphql.Type {
-	elem := t.Elem()
+func (object *Object) GraphQLType() *graphql.Object {
+	graphqlInterfaces := InterfacesFromInterfaces(object.interfaces)
 
-	if elem.Kind() == reflect.Slice {
-		gType := GetArrayGType(elem)
-		return graphql.NewList(gType)
+	if object.object != nil {
+		for _, field := range object.fields {
+			object.object.AddFieldConfig(field.Name, field.GraphQLType())
+		}
+
+		return object.object
 	}
 
-	return graphql.NewList(types[elem.Name()])
+	fields := graphql.Fields{}
+	for _, field := range object.fields {
+		fields[field.Name] = field.GraphQLType()
+	}
+
+	object.object = graphql.NewObject(graphql.ObjectConfig{
+		Name:        object.Name,
+		Fields:      fields,
+		Description: object.Description,
+		Interfaces:  graphqlInterfaces,
+	})
+
+	return object.object
 }
 
-func GetGType(field reflect.StructField) graphql.Type {
-	var gType graphql.Type
-	
-	t := field.Type
-	
-	if t.Kind() == reflect.Slice {
-		gType = GetArrayGType(t)
-	} else {
-		typeName := t.Name()
-		gType = types[typeName]
+func NewObject(t reflect.Type) *Object {
+	// create resolvers for fields
+	// For custom resolvers validate the argument types of the resolver
+
+	if t.Kind() != reflect.Struct {
+		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Struct, received %s", t.Kind()))
 	}
 
-	if field.Tag.Get("nullable") == "false" {
-		gType = graphql.NewNonNull(gType)
+	structName := t.Name()
+	object := &Object{
+		Name:       structName,
+		fields:     []*Field{},
+		interfaces: []*Interface{},
 	}
 
-	return gType
+	graphqlTypes[t] = object.GraphQLType()
+
+	structFieldCount := t.NumField()
+	for i := 0; i < structFieldCount; i++ {
+		structField := t.Field(i)
+		field := NewField(structField)
+
+		// field is a relationship if it's nil
+		if field != nil {
+			object.fields = append(object.fields, field)
+		}
+	}
+
+	object.GraphQLType()
+
+	return object
 }
 
-type ObjectConfig struct {
-	CamelCase bool
-}
+func NewObjects(types ...reflect.Type) []*Object {
+	objects := []*Object{}
 
-func NewObject(t reflect.Type, relationQueue *RelationQueue, config ObjectConfig) *graphql.Object {
-	objectName := t.Name()
-	gObjectConfig := graphql.ObjectConfig{ Name: objectName, Fields: graphql.Fields{} }
-	gObject := graphql.NewObject(gObjectConfig)
-	
-	fieldsCount := t.NumField()
-	for i := 0; i < fieldsCount; i++ {
-		var fieldName string
-		var gType graphql.Type
-		field := t.Field(i)
-		fieldTypeName := field.Type.Name()
-
-		gField := graphql.Field{ 
-			Type: gType,
-			DeprecationReason: field.Tag.Get("deprecate"),
-			Description: field.Tag.Get("description"),
-		}
-
-		// Get the field name on type
-		if value := field.Tag.Get("json"); value != "" {
-			fieldName = value
-		} else {
-			name := field.Name
-			if config.CamelCase {
-				name = strings.ToLower(string(name[0])) + name[1:]
-			}
-			
-			fieldName = name
-		}
-
-		// Get the graphql.Type struct or add to queu and continue
-		if field.Type.Kind() != reflect.Struct {
-			gType = GetGType(field)
-		} else if _, ok := types[fieldTypeName]; ok {
-			gType = GetGType(field)
-		} else {
-			relationQueue.add(fieldName, field, gObject)
-			continue
-		}
-
-		// Add resolvers
-		resolver, ok := field.Type.MethodByName("Resolve" + field.Type.Name())
-		if ok {
-			// check resolver type
-			numOut := resolver.Func.Type().NumOut()
-
-			if numOut != 2 {
-				panic(fmt.Sprintf("resolver for %v must have the return 2 values of type (%v, error), returned only %d value", fieldTypeName, fieldTypeName, numOut))
-			}
-
-			fReturnType := resolver.Func.Type().Out(0)
-			sReturnType := resolver.Func.Type().Out(1)
-			if fReturnType != field.Type || sReturnType != reflect.TypeOf(new(error)) {
-				panic(fmt.Sprintf("resolver for %v must have a return type of (%v, error), got (%v, %v)", fieldTypeName, fieldTypeName, fReturnType, sReturnType))
-			}
-
-			// add resolver to graphql.Type
-
-			gField.Resolve = func(p graphql.ResolveParams) (interface{}, error) {
-				args := []reflect.Value{}
-
-				// add context to args
-				args = append(args, reflect.ValueOf(p.Context))
-
-				// add input args to args
-
-				response := resolver.Func.Call(args)
-
-				return response[0], response[1].Interface().(error)
-			}
-		} else {
-			// default resolver
-
-			gField.Resolve = func(p graphql.ResolveParams) (interface{}, error) {
-				return reflect.ValueOf(p.Source).FieldByName(field.Type.Name()).Interface(), nil
-			}
-		}
-
-		gField.Type = gType
-		gObject.AddFieldConfig(fieldName, &gField)
+	for _, t := range types {
+		objects = append(objects, NewObject(t))
 	}
 
-	types[objectName] = gObject
-
-	return gObject
+	return objects
 }
