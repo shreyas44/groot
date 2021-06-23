@@ -61,7 +61,7 @@ func NewObject(t reflect.Type) *Object {
 	structFieldCount := t.NumField()
 	for i := 0; i < structFieldCount; i++ {
 		structField := t.Field(i)
-		field := NewField(structField)
+		field := NewField(structField, t)
 
 		// field is a relationship if it's nil
 		if field != nil {
