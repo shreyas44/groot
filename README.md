@@ -118,34 +118,34 @@ As you can see, there are quite a few drawbacks to doing this. First, `interface
 In contrast, here's how you'd do it with `Groot`
 
 ```go
-type User {
-	Id string `json:"id"`
+type User struct {
+	ID string `json:"id"`
 	Name string `json:"name"`
 }
 
-type Post {
-	Id string `json:"id"`
+type Post struct {
+	ID string `json:"id"`
 	Body string `json:"body"`
 	Timestamp int `json:"timestamp" description:"When the post was posted"`
 	Author User `json:"author"`
 }
 
-type Query {
+type Query struct {
 	User User `json:"user"`
 	Post Post `json:"post"`
 }
 
-type IdArgs {
-	Id string `json:"id"`
+type IdArgs struct {
+	ID string `json:"id"`
 }
 
 func (query Query) ResolveUser(args IdArgs) (User, error) {
-	return db.User.Get(args.Id), nil
+	return db.User.Get(args.ID), nil
 }
 
 // you can either include or omit the arguments, context, and info based on the needs of your resolver.
 func (query Query) ResolvePost(args IdArgs, context context.Context, info graphql.ResolveInfo) (Post, error) {
-	return db.Post.Get(args.Id), nil
+	return db.Post.Get(args.ID), nil
 }
 
 func main() {
