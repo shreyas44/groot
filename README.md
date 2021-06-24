@@ -151,7 +151,7 @@ func (query Query) ResolvePost(args IdArgs, context context.Context, info graphq
 func main() {
 	queryType := groot.NewObject(reflect.TypeOf(Query{}))
 	schema := graphql.NewSchema(graphql.SchemaConfig{
-		Query, queryType.GraphQLType()
+		Query: queryType.GraphQLType()
 	})
 }
 ```
