@@ -16,6 +16,7 @@ type Post {
   id: String
   body: String
   author: User
+	# When the post was posted
   timestamp: Int
 }
 
@@ -67,6 +68,7 @@ func main() {
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					return 12345, nil
 				},
+				Description: "When the post was posted",
 			},
 			"author": &graphql.Field{
 				Type: userObject,
@@ -124,7 +126,7 @@ type User {
 type Post {
 	Id string `json:"id"`
 	Body string `json:"body"`
-	Timestamp int `json:"timestamp"`
+	Timestamp int `json:"timestamp" description:"When the post was posted"`
 	Author User `json:"author"`
 }
 
@@ -155,3 +157,5 @@ func main() {
 ```
 
 As you can see, the code is much more readable, and takes full advantage of the Go type system. Groot also comes with default resolvers, type checking the resolv Oh and it's intercompatible with `gtihub.com/graphql-go/graphql`. In fact, Groot uses `github.com/graphql-go/graphql` under the hood, and just provides a really nice abstraction on top of it. This means almost all extensions and libraries meant to be used with `github.com/graphql-go/graphql` can continue to be used with Groot.
+
+Note, the library is still a WIP and is untested. Interfaces, Unions, and Arrays are not yet supported.
