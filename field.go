@@ -1,6 +1,8 @@
 package groot
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -68,6 +70,7 @@ func NewField(structField reflect.StructField, structType reflect.Type) *Field {
 	var depractionReason string
 	var arguments []*Argument
 	var resolver func(p graphql.ResolveParams) (interface{}, error)
+	resolverArguments := [3]bool{}
 
 	// find out how to avoid using a second argument
 	if structType.Kind() != reflect.Struct {
@@ -108,10 +111,9 @@ func NewField(structField reflect.StructField, structType reflect.Type) *Field {
 	if method, exists := structType.MethodByName(fmt.Sprintf("Resolve%s", structField.Name)); exists {
 		methodType := method.Func.Type()
 
-		// get type of resolver
-
+		// type check resolver
 		outCount := methodType.NumOut()
-		// inCount := methodType.NumIn()
+		inCount := methodType.NumIn()
 
 		if outCount != 2 {
 			panic(
@@ -133,26 +135,34 @@ func NewField(structField reflect.StructField, structType reflect.Type) *Field {
 			panic(message)
 		}
 
-		// resolverArguments := resolverArguments{}
+		if inCount > 4 {
+			panic(
+				fmt.Sprintf(
+					"resolver %s can accept only up to 3 arguments of type (Args, context.Context, graphql.ResolveInfo)",
+					method.Name,
+				),
+			)
+		}
+
 		// ignore first input as that's the struct the method is acting on
-		// for i := 1; i < inCount; i++ {
-		// 	if methodType.In(i).Implements(reflect.TypeOf((context.Context)(nil))) {
-		// 		resolverArguments.context = true
-		// 	}
+		// TODO: fix logic to decide arguments of resolver
+		for i := 1; i < inCount; i++ {
+			if methodType.In(i) == reflect.TypeOf(graphql.ResolveInfo{}) {
+				resolverArguments[2] = true
+			} else if methodType.In(i).Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
+				resolverArguments[1] = true
+			} else if methodType.In(i).Kind() == reflect.Struct {
+				resolverArguments[0] = true
+			}
+		}
 
-		// 	if methodType.In(i) == reflect.TypeOf(graphql.ResolveInfo{}) {
-		// 		resolverArguments.context = true
-		// 	}
-		// }
-
-		// type check resolver
-
-		// add arguments in resolver
-
-		arguments = GetArguments(methodType.In(1))
+		if resolverArguments[0] {
+			arguments = GetArguments(methodType.In(1))
+		}
 
 		resolver = func(p graphql.ResolveParams) (interface{}, error) {
 			var source reflect.Value
+			args := []reflect.Value{}
 
 			// if it's a map, it's a root query
 			if _, isMap := p.Source.(map[string]interface{}); isMap {
@@ -161,11 +171,22 @@ func NewField(structField reflect.StructField, structType reflect.Type) *Field {
 				source = p.Source.(reflect.Value).Convert(structType)
 			}
 
-			args := []reflect.Value{
-				source,
-				reflect.Indirect(reflect.New(methodType.In(1))),
-				reflect.ValueOf(p.Context),
-				reflect.ValueOf(p.Info),
+			args = append(args, source)
+
+			if resolverArguments[0] {
+				structInterface := reflect.New(methodType.In(1)).Interface()
+				jsonBytes, _ := json.Marshal(p.Args)
+				json.Unmarshal(jsonBytes, &structInterface)
+
+				args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
+			}
+
+			if resolverArguments[1] {
+				args = append(args, reflect.ValueOf(p.Context))
+			}
+
+			if resolverArguments[2] {
+				args = append(args, reflect.ValueOf(p.Info))
 			}
 
 			response := method.Func.Call(args)
