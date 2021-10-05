@@ -33,13 +33,19 @@ func (builder *SchemaBuilder) parseAndGetRoot(t reflect.Type) *graphql.Object {
 	return root.GraphQLType().(*graphql.Object)
 }
 
-func NewSchema(config SchemaConfig) graphql.Schema {
+func NewSchema(config SchemaConfig) (graphql.Schema, error) {
 	builder := NewSchemaBuilder()
-	schema, _ := graphql.NewSchema(graphql.SchemaConfig{
-		Query: builder.parseAndGetRoot(config.Query),
-		// Mutation:   builder.parseAndGetRoot(config.Mutation),
+	schemaConfig := graphql.SchemaConfig{
 		Extensions: config.Extensions,
-	})
+	}
 
-	return schema
+	if config.Query != nil {
+		schemaConfig.Query = builder.parseAndGetRoot(config.Query)
+	}
+
+	if config.Mutation != nil {
+		schemaConfig.Mutation = builder.parseAndGetRoot(config.Mutation)
+	}
+
+	return graphql.NewSchema(schemaConfig)
 }
