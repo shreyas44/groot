@@ -8,28 +8,28 @@ Let's look at an example to create a simple GraphQL Schema
 
 ```graphql
 enum UserType {
-	ADMIN
-	USER
+  ADMIN
+  USER
 }
 
 type User {
   id: String!
   name: String!
-	type: UserType!
-	oldType: UserType! @deprecated(reason: "Old Field")
+  type: UserType!
+  oldType: UserType! @deprecated(reason: "Old Field")
 }
 
 type Post {
   id: String!
   body: String
   author: User!
-	# When the post was posted
+  # When the post was posted
   timestamp: Int!
 }
 
 type Query {
-	user(id: String!) User
-	post(id: String!) Post
+  user(id: String!) User
+  post(id: String!) Post
 }
 ```
 
@@ -196,9 +196,8 @@ func (query Query) ResolvePost(args IdArgs, context context.Context, info graphq
 }
 
 func main() {
-	queryType := groot.NewObject(reflect.TypeOf(Query{}))
-	schema := graphql.NewSchema(graphql.SchemaConfig{
-		Query: queryType.GraphQLType()
+	schema := groot.NewSchema(groot.SchemaConfig{
+		Query: reflect.TypeOf(Query{})
 	})
 }
 ```
@@ -209,7 +208,7 @@ No generated code, no boilerplate, composable, and type safe!
 
 ---
 
-### Features not supported
+### Features Not Yet Supported
 
 - [ ] Custom Scalars
 - [ ] Descriptions for type definitions
