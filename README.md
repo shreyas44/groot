@@ -7,17 +7,24 @@ Currently, the main implementation of GraphQL in Go is https://github.com/graphq
 Let's look at an example to create a simple GraphQL Schema
 
 ```graphql
+enum UserType {
+	ADMIN
+	USER
+}
+
 type User {
-  id: String
-  name: String
+  id: String!
+  name: String!
+	type: UserType!
+	oldType: UserType! @deprecated(reason: "Old Field")
 }
 
 type Post {
-  id: String
+  id: String!
   body: String
-  author: User
+  author: User!
 	# When the post was posted
-  timestamp: Int
+  timestamp: Int!
 }
 
 type Query {
@@ -30,20 +37,45 @@ What the code looks like with `github.com/graphql-go/graphql`
 
 ```go
 func main() {
+	userTypeEnum := graphql.NewEnum(graphql.EnumConfig{
+		Name: "UserType",
+		Values: graphql.EnumValueConfigMap{
+			"ADMIN": &graphql.EnumValueConfig{
+				Value: "ADMIN",
+			},
+			"USER": &graphql.EnumValueConfig{
+				Value: "USER",
+			},
+		},
+	})
+
 	userObject := graphql.NewObject(graphql.ObjectConfig{
 		Name: "User",
 		Fields: graphql.Fields{
 			"id": &graphql.Field{
-				Type: graphql.String,
+				Type: graphql.NewNonNull(graphql.String),
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					return "anid", nil
 				},
 			},
 			"name": &graphql.Field{
-				Type: graphql.String,
+				Type: graphql.NewNonNull(graphql.String),
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					return "A Name", nil
 				},
+			},
+			"type": &graphql.Field{
+				Type: graphql.NewNonNull(UserTypeEnum),
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					return "ADMIN", nil
+				},
+			},
+			"oldType": &graphql.Field{
+				Type: graphql.NewNonNull(UserTypeEnum),
+				DeprecationReason: "Old Field",
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					return "ADMIN", nil
+				}
 			},
 		},
 	})
@@ -52,7 +84,7 @@ func main() {
 		Name: "Post",
 		Fields: graphql.Fields{
 			"id": &graphql.Field{
-				Type: graphql.String,
+				Type: graphql.NewNonNull(graphql.String),
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					return "anid", nil
 				},
@@ -64,14 +96,14 @@ func main() {
 				},
 			},
 			"timestamp": &graphql.Field{
-				Type: graphql.Int,
+				Type: graphql.NewNonNull(graphql.Int),
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					return 12345, nil
 				},
 				Description: "When the post was posted",
 			},
 			"author": &graphql.Field{
-				Type: userObject,
+				Type: graphql.NewNonNull(userObject),
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					return nil, nil
 				},
@@ -118,21 +150,36 @@ As you can see, there are quite a few drawbacks to doing this. First, `interface
 In contrast, here's how you'd do it with `Groot`
 
 ```go
+
+type UserType string
+
+const (
+	UserTypeAdmin UserType = "ADMIN"
+	UserTypeUser  UserType = "USER"
+)
+
+func (u UserType) Values() []string {
+	return []string{string(UserTypeAdmin), string(UserTypeUser)}
+}
+
 type User struct {
-	ID string `json:"id"`
-	Name string `json:"name"`
+	ID   string   `json:"id"`
+	Name string   `json:"name"`
+	Type UserType `json:"type"`
+	OldType UserType `json:"oldType" deprecate:"Old Field"`
 }
 
 type Post struct {
-	ID string `json:"id"`
-	Body string `json:"body"`
-	Timestamp int `json:"timestamp" description:"When the post was posted"`
-	Author User `json:"author"`
+	ID        string  `json:"id"`
+	// you can use a pointer to mark the field as nullable
+	Body      *string `json:"body"`
+	Timestamp int     `json:"timestamp" description:"When the post was posted"`
+	Author    User    `json:"author"`
 }
 
 type Query struct {
-	User User `json:"user"`
-	Post Post `json:"post"`
+	User *User `json:"user"`
+	Post *Post `json:"post"`
 }
 
 type IdArgs struct {
@@ -156,6 +203,19 @@ func main() {
 }
 ```
 
-As you can see, the code is much more readable, and takes full advantage of the Go type system. Groot also comes with default resolvers, type checking the resolv Oh and it's intercompatible with `gtihub.com/graphql-go/graphql`. In fact, Groot uses `github.com/graphql-go/graphql` under the hood, and just provides a really nice abstraction on top of it. This means almost all extensions and libraries meant to be used with `github.com/graphql-go/graphql` can continue to be used with Groot.
+As you can see, the code is much more readable, and takes full advantage of the Go type system. Groot also comes with default resolvers, and type checks the resolvers on startup. It's also intercompatible with `gtihub.com/graphql-go/graphql` since it uses `github.com/graphql-go/graphql` under the hood, and just provides a really nice abstraction on top of it. This means almost all extensions and libraries meant to be used with `github.com/graphql-go/graphql` can continue to be used with Groot.
 
-Note, the library is still a WIP and is untested. Interfaces, Unions, and Arrays are not yet supported.
+No generated code, no boilerplate, composable, and type safe!
+
+---
+
+### Features not supported
+
+- [ ] Custom Scalars
+- [ ] Descriptions for type definitions
+- [ ] Enum value description and deprecation
+
+### Note
+
+- The only case where there's no type safety or type checking either by Go or Groot is for GraphQL interfaces
+- Although all use cases are covered (except the ones mentioned above), the library isn't teststed yet

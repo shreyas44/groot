@@ -8,19 +8,20 @@ import (
 )
 
 type InputObject struct {
-	Name        string
+	name        string
 	Description string
 	object      *graphql.InputObject
 	fields      []*Argument
+	reflectType reflect.Type
 }
 
-func (object *InputObject) GraphQLType() *graphql.InputObject {
+func (object *InputObject) GraphQLType() graphql.Type {
 	if object.object != nil {
 		for _, field := range object.fields {
-			object.object.AddFieldConfig(field.Name, &graphql.InputObjectFieldConfig{
-				Type:         field.GraphQLType().Type,
-				Description:  field.Description,
-				DefaultValue: field.Default,
+			object.object.AddFieldConfig(field.name, &graphql.InputObjectFieldConfig{
+				Type:         field.GraphQLArgument().Type,
+				Description:  field.description,
+				DefaultValue: field.default_,
 			})
 		}
 
@@ -29,15 +30,15 @@ func (object *InputObject) GraphQLType() *graphql.InputObject {
 
 	fields := graphql.InputObjectConfigFieldMap{}
 	for _, field := range object.fields {
-		fields[field.Name] = &graphql.InputObjectFieldConfig{
-			Type:         field.Type,
-			Description:  field.Description,
-			DefaultValue: field.Default,
+		fields[field.name] = &graphql.InputObjectFieldConfig{
+			Type:         field.type_,
+			Description:  field.description,
+			DefaultValue: field.default_,
 		}
 	}
 
 	object.object = graphql.NewInputObject(graphql.InputObjectConfig{
-		Name:        object.Name,
+		Name:        object.name,
 		Fields:      fields,
 		Description: object.Description,
 	})
@@ -45,30 +46,31 @@ func (object *InputObject) GraphQLType() *graphql.InputObject {
 	return object.object
 }
 
-func NewInputObject(t reflect.Type) *InputObject {
+func NewInputObject(t reflect.Type, builder *SchemaBuilder) *InputObject {
 	if t.Kind() != reflect.Struct {
 		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Struct, received %s", t.Kind()))
 	}
 
 	structName := t.Name()
 	inputObject := &InputObject{
-		Name:   structName,
-		fields: []*Argument{},
+		name:        structName,
+		fields:      []*Argument{},
+		reflectType: t,
 	}
 
-	graphqlInputTypes[t] = inputObject.GraphQLType()
-
+	builder.types[structName] = inputObject.GraphQLType()
 	structFieldCount := t.NumField()
+
 	for i := 0; i < structFieldCount; i++ {
 		structField := t.Field(i)
-		field := NewArgument(structField)
+		field := NewArgument(structField, builder)
 
-		// field is a relationship if it's nil
 		if field != nil {
 			inputObject.fields = append(inputObject.fields, field)
 		}
 	}
 
-	inputObject.GraphQLType()
+	builder.grootTypes[t] = inputObject
+	builder.types[structName] = inputObject.GraphQLType()
 	return inputObject
 }

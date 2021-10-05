@@ -9,46 +9,52 @@ import (
 	"github.com/graphql-go/graphql"
 )
 
+type fieldResolverArgType int
+
+type CustomName interface {
+	GraphQLName() string
+}
+
+const (
+	fieldResolverArgInputArg fieldResolverArgType = iota
+	fieldResolverArgContext
+	fieldResolverArgInfo
+)
+
 type Field struct {
-	Name              string
-	Description       string
-	DeprecationReason string
-	Type              graphql.Type
-	Arguments         []*Argument
-	Resolve           func(p graphql.ResolveParams) (interface{}, error)
+	name              string
+	description       string
+	deprecationReason string
+	type_             GrootType
+	arguments         []*Argument
+	resolve           func(p graphql.ResolveParams) (interface{}, error)
 	field             *graphql.Field
 }
 
-type resolverArguments struct {
-	arguments bool
-	context   bool
-	info      bool
-}
-
-func (field *Field) GraphQLType() *graphql.Field {
+func (field *Field) GraphQLField() *graphql.Field {
 	if field.field != nil {
 		return field.field
 	}
 
 	args := graphql.FieldConfigArgument{}
 
-	for _, argument := range field.Arguments {
-		args[argument.Name] = argument.GraphQLType()
+	for _, argument := range field.arguments {
+		args[argument.name] = argument.GraphQLArgument()
 	}
 
 	field.field = &graphql.Field{
-		Name:              field.Name,
-		Type:              field.Type,
-		Description:       field.Description,
-		Resolve:           field.Resolve,
-		DeprecationReason: field.DeprecationReason,
+		Name:              field.name,
+		Type:              field.type_.GraphQLType(),
+		Description:       field.description,
+		Resolve:           field.resolve,
+		DeprecationReason: field.deprecationReason,
 		Args:              args,
 	}
 
 	return field.field
 }
 
-func GetArguments(t reflect.Type) []*Argument {
+func getArguments(t reflect.Type, builder *SchemaBuilder) []*Argument {
 	arguments := []*Argument{}
 	if t.Kind() != reflect.Struct {
 		panic("argument type must be a struct")
@@ -57,20 +63,87 @@ func GetArguments(t reflect.Type) []*Argument {
 	fieldCount := t.NumField()
 	for i := 0; i < fieldCount; i++ {
 		fieldType := t.Field(i)
-		argument := NewArgument(fieldType)
-		arguments = append(arguments, argument)
+		if argument := NewArgument(fieldType, builder); argument != nil {
+			arguments = append(arguments, argument)
+		}
 	}
 
 	return arguments
 }
 
-func NewField(structField reflect.StructField, structType reflect.Type) *Field {
-	var name string
-	var description string
-	var depractionReason string
-	var arguments []*Argument
-	var resolver func(p graphql.ResolveParams) (interface{}, error)
-	resolverArguments := [3]bool{}
+func isTypeInterface(t reflect.Type) bool {
+	interfaceType := reflect.TypeOf((*InterfaceType)(nil)).Elem()
+
+	if !t.Implements(interfaceType) {
+		return false
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		if field := t.Field(i); field.Anonymous && field.Type.Implements(interfaceType) {
+			return !isTypeInterface(field.Type)
+		}
+	}
+
+	return true
+}
+
+func isTypeUnion(t reflect.Type) bool {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Anonymous && field.Type == reflect.TypeOf(UnionType{}) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
+	if grootType, ok := builder.grootTypes[t]; ok {
+		return grootType
+	}
+
+	switch t.Kind() {
+	case reflect.Ptr:
+		return GetNullable(parseFieldType(t.Elem(), builder))
+
+	case reflect.Slice:
+		return NewNonNull(NewArray(parseFieldType(t.Elem(), builder)))
+
+	case reflect.Struct:
+		if isTypeInterface(t) {
+			return NewNonNull(NewInterface(t, builder))
+		}
+
+		if isTypeUnion(t) {
+			return NewNonNull(NewUnion(t, builder))
+		}
+
+		return NewNonNull(NewObject(t, builder))
+
+	case reflect.Int, reflect.Bool, reflect.Float32:
+		return NewNonNull(NewScalar(t, builder))
+
+	case reflect.String:
+		if t.Name() == "string" {
+			return NewNonNull(NewScalar(t, builder))
+		}
+
+		return NewNonNull(NewEnum(t, builder))
+	}
+
+	panic("invalid struct field type")
+}
+
+func NewField(structType reflect.Type, structField reflect.StructField, builder *SchemaBuilder) *Field {
+	var (
+		name              string
+		description       string
+		depracationReason string
+		arguments         []*Argument
+		resolver          graphql.FieldResolveFn
+		grootType         = parseFieldType(structField.Type, builder)
+	)
 
 	// find out how to avoid using a second argument
 	if structType.Kind() != reflect.Struct {
@@ -92,41 +165,64 @@ func NewField(structField reflect.StructField, structType reflect.Type) *Field {
 	}
 
 	if deprecate := structField.Tag.Get("deprecate"); deprecate != "" {
-		depractionReason = deprecate
-	}
-
-	graphqlType, ok := graphqlTypes[structField.Type]
-	if structFieldType := structField.Type; !ok && structFieldType.Kind() == reflect.Struct {
-		graphqlTypes[structField.Type] = nil
-		object := NewObject(structFieldType)
-		graphqlType = object.GraphQLType()
+		depracationReason = deprecate
 	}
 
 	// default resolver
 	resolver = func(p graphql.ResolveParams) (interface{}, error) {
-		return p.Source.(reflect.Value).FieldByName(structField.Name), nil
+		// reflect.ValueOf(p.Source).Convert(structType)
+		value := reflect.ValueOf(p.Source).FieldByName(structField.Name)
+		return value.Interface(), nil
 	}
 
 	// custom resolver
 	if method, exists := structType.MethodByName(fmt.Sprintf("Resolve%s", structField.Name)); exists {
-		methodType := method.Func.Type()
+		var (
+			methodType = method.Func.Type()
+			returnType = structField.Type
 
-		// type check resolver
-		outCount := methodType.NumOut()
-		inCount := methodType.NumIn()
+			contextInterface = reflect.TypeOf((*context.Context)(nil)).Elem()
+			interfaceType    = reflect.TypeOf((*InterfaceType)(nil)).Elem()
+			errorInterface   = reflect.TypeOf((*error)(nil)).Elem()
+			resolverInfoType = reflect.TypeOf(graphql.ResolveInfo{})
+
+			outCount = methodType.NumOut()
+			inCount  = methodType.NumIn()
+
+			resolverArgs        = []fieldResolverArgType{}
+			validArgPermuations = [][]fieldResolverArgType{
+				{fieldResolverArgInputArg, fieldResolverArgContext, fieldResolverArgInfo},
+				{fieldResolverArgInputArg, fieldResolverArgContext},
+				{fieldResolverArgInputArg, fieldResolverArgInfo},
+				{fieldResolverArgContext, fieldResolverArgInfo},
+				{fieldResolverArgInputArg},
+				{fieldResolverArgContext},
+				{fieldResolverArgInfo},
+				{},
+			}
+		)
 
 		if outCount != 2 {
 			panic(
-				fmt.Sprintf("return type of (%s, error) was expected for resolver %s", structType.Name(), method.Name),
+				fmt.Sprintf("return type of (%s, error) was expected for resolver %s", returnType.Name(), method.Name),
 			)
 		}
 
-		// credits - https://stackoverflow.com/questions/30688514/go-reflect-how-to-check-whether-reflect-type-is-an-error-type/30688564
-		errorInterface := reflect.TypeOf((*error)(nil)).Elem()
-		if methodType.Out(0) != structField.Type || !methodType.Out(1).Implements(errorInterface) {
+		_, ok := GetNullable(grootType).(*Interface)
+		if ok && (methodType.Out(0) != interfaceType || !methodType.Out(1).Implements(errorInterface)) {
 			message := fmt.Sprintf(
 				"return type of (%s, error) was expected for resolver %s, got (%s, %s)",
-				structField.Type.Name(),
+				interfaceType.Name(),
+				method.Name,
+				methodType.Out(0).Name(),
+				methodType.Out(1).Name(),
+			)
+
+			panic(message)
+		} else if !ok && (methodType.Out(0) != returnType || !methodType.Out(1).Implements(errorInterface)) {
+			message := fmt.Sprintf(
+				"return type of (%s, error) was expected for resolver %s, got (%s, %s)",
+				returnType.Name(),
 				method.Name,
 				methodType.Out(0).Name(),
 				methodType.Out(1).Name(),
@@ -144,78 +240,101 @@ func NewField(structField reflect.StructField, structType reflect.Type) *Field {
 			)
 		}
 
-		// ignore first input as that's the struct the method is acting on
-		// TODO: fix logic to decide arguments of resolver
 		for i := 1; i < inCount; i++ {
-			if methodType.In(i) == reflect.TypeOf(graphql.ResolveInfo{}) {
-				resolverArguments[2] = true
-			} else if methodType.In(i).Implements(reflect.TypeOf((*context.Context)(nil)).Elem()) {
-				resolverArguments[1] = true
-			} else if methodType.In(i).Kind() == reflect.Struct {
-				resolverArguments[0] = true
+			arg := method.Type.In(i)
+
+			switch {
+			case arg.Implements(contextInterface):
+				resolverArgs = append(resolverArgs, fieldResolverArgContext)
+			case arg == resolverInfoType:
+				resolverArgs = append(resolverArgs, fieldResolverArgInfo)
+			case arg.Kind() == reflect.Struct:
+				resolverArgs = append(resolverArgs, fieldResolverArgInputArg)
 			}
 		}
 
-		if resolverArguments[0] {
-			arguments = GetArguments(methodType.In(1))
+		isValid := false
+		for _, permutation := range validArgPermuations {
+			if reflect.DeepEqual(resolverArgs, permutation) {
+				isValid = true
+
+				for i, arg := range resolverArgs {
+					if arg == fieldResolverArgInputArg {
+						arguments = getArguments(method.Type.In(i+1), builder)
+					}
+				}
+
+				break
+			}
 		}
 
+		if !isValid {
+			panic("invalid resolver args order")
+		}
+
+		union, isUnion := GetNullable(grootType).(*Union)
 		resolver = func(p graphql.ResolveParams) (interface{}, error) {
 			var source reflect.Value
-			args := []reflect.Value{}
-
 			// if it's a map, it's a root query
 			if _, isMap := p.Source.(map[string]interface{}); isMap {
-				source = reflect.Indirect(reflect.New(structType))
+				source = reflect.Indirect(reflect.New(method.Type.In(0)))
 			} else {
-				source = p.Source.(reflect.Value).Convert(structType)
+				source = reflect.ValueOf(p.Source).Convert(structType)
 			}
 
-			args = append(args, source)
+			args := []reflect.Value{source}
 
-			if resolverArguments[0] {
-				structInterface := reflect.New(methodType.In(1)).Interface()
-				jsonBytes, _ := json.Marshal(p.Args)
-				json.Unmarshal(jsonBytes, &structInterface)
-
-				args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
-			}
-
-			if resolverArguments[1] {
-				args = append(args, reflect.ValueOf(p.Context))
-			}
-
-			if resolverArguments[2] {
-				args = append(args, reflect.ValueOf(p.Info))
+			for _, arg := range resolverArgs {
+				switch arg {
+				case fieldResolverArgInputArg:
+					structInterface := reflect.New(methodType.In(1)).Interface()
+					jsonBytes, _ := json.Marshal(p.Args)
+					json.Unmarshal(jsonBytes, &structInterface)
+					args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
+				case fieldResolverArgContext:
+					args = append(args, reflect.ValueOf(p.Context))
+				case fieldResolverArgInfo:
+					args = append(args, reflect.ValueOf(p.Info))
+				}
 			}
 
 			response := method.Func.Call(args)
-			return response[0], nil
+			value, err := response[0], response[1]
+
+			if isUnion {
+				p := graphql.ResolveTypeParams{
+					Value:   value.Interface(),
+					Info:    p.Info,
+					Context: p.Context,
+				}
+
+				value = union.resolveValue(p)
+			}
+
+			if err.IsNil() {
+				return value.Interface(), nil
+			}
+
+			return value.Interface(), err.Interface().(error)
 		}
+	} else if _, ok := GetNullable(grootType).(*Interface); ok {
+		msg := fmt.Sprintf(
+			"field %s on struct %s of interface type must have a resolver function",
+			structField.Name,
+			structType.Name(),
+		)
+		panic(msg)
 	}
 
 	field := &Field{
-		Name:              name,
-		Description:       description,
-		Type:              graphqlType,
-		Resolve:           resolver,
-		DeprecationReason: depractionReason,
-		Arguments:         arguments,
+		name:              name,
+		description:       description,
+		type_:             grootType,
+		resolve:           resolver,
+		deprecationReason: depracationReason,
+		arguments:         arguments,
 	}
 
-	// hydrate field.field with *graphql.Field
-	field.GraphQLType()
-
+	field.field = field.GraphQLField()
 	return field
-}
-
-func FieldsFromFields(fields []*Field) []*graphql.Field {
-	graphqlFields := []*graphql.Field{}
-
-	for _, field := range fields {
-		graphqlField := field.GraphQLType()
-		graphqlFields = append(graphqlFields, graphqlField)
-	}
-
-	return graphqlFields
 }

@@ -8,19 +8,21 @@ import (
 )
 
 type Object struct {
-	Name        string
-	Description string
+	name        string
+	description string
 	object      *graphql.Object
 	fields      []*Field
-	interfaces  []*Interface
+
+	builder    *SchemaBuilder
+	interfaces []*Interface
+
+	reflectType reflect.Type
 }
 
-func (object *Object) GraphQLType() *graphql.Object {
-	graphqlInterfaces := InterfacesFromInterfaces(object.interfaces)
-
+func (object *Object) GraphQLType() graphql.Type {
 	if object.object != nil {
 		for _, field := range object.fields {
-			object.object.AddFieldConfig(field.Name, field.GraphQLType())
+			object.object.AddFieldConfig(field.name, field.GraphQLField())
 		}
 
 		return object.object
@@ -28,58 +30,79 @@ func (object *Object) GraphQLType() *graphql.Object {
 
 	fields := graphql.Fields{}
 	for _, field := range object.fields {
-		fields[field.Name] = field.GraphQLType()
+		fields[field.name] = field.GraphQLField()
+	}
+
+	interfaces := []*graphql.Interface{}
+	for _, interface_ := range object.interfaces {
+		interfaces = append(interfaces, interface_.GraphQLType().(*graphql.Interface))
 	}
 
 	object.object = graphql.NewObject(graphql.ObjectConfig{
-		Name:        object.Name,
+		Name:        object.name,
+		Description: object.description,
 		Fields:      fields,
-		Description: object.Description,
-		Interfaces:  graphqlInterfaces,
+		Interfaces:  interfaces,
 	})
 
 	return object.object
 }
 
-func NewObject(t reflect.Type) *Object {
-	// create resolvers for fields
-	// For custom resolvers validate the argument types of the resolver
+func getFields(t reflect.Type, builder *SchemaBuilder) []*Field {
+	fields := []*Field{}
+	fieldCount := t.NumField()
 
+	for i := 0; i < fieldCount; i++ {
+		structField := t.Field(i)
+
+		if structField.Anonymous {
+			fields = append(fields, getFields(structField.Type, builder)...)
+		} else if field := NewField(t, structField, builder); field != nil {
+			fields = append(fields, field)
+		}
+	}
+
+	return fields
+}
+
+func NewObject(t reflect.Type, builder *SchemaBuilder) *Object {
 	if t.Kind() != reflect.Struct {
 		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Struct, received %s", t.Kind()))
 	}
 
-	structName := t.Name()
-	object := &Object{
-		Name:       structName,
-		fields:     []*Field{},
-		interfaces: []*Interface{},
-	}
+	var (
+		interfaceType    = reflect.TypeOf((*InterfaceType)(nil)).Elem()
+		embeddedTypes    = []reflect.Type{}
+		structName       = t.Name()
+		structFieldCount = t.NumField()
+		object           = &Object{
+			name:        structName,
+			interfaces:  []*Interface{},
+			builder:     builder,
+			reflectType: t,
+		}
+	)
 
-	graphqlTypes[t] = object.GraphQLType()
-
-	structFieldCount := t.NumField()
 	for i := 0; i < structFieldCount; i++ {
 		structField := t.Field(i)
-		field := NewField(structField, t)
-
-		// field is a relationship if it's nil
-		if field != nil {
-			object.fields = append(object.fields, field)
+		if structField.Type.Kind() == reflect.Struct && structField.Anonymous && structField.Type.Implements(interfaceType) {
+			embeddedTypes = append(embeddedTypes, structField.Type)
 		}
 	}
 
-	object.GraphQLType()
-
-	return object
-}
-
-func NewObjects(types ...reflect.Type) []*Object {
-	objects := []*Object{}
-
-	for _, t := range types {
-		objects = append(objects, NewObject(t))
+	for _, embeddedType := range embeddedTypes {
+		if embeddedType.Implements(interfaceType) {
+			if interface_, ok := builder.grootTypes[embeddedType].(*Interface); ok {
+				object.interfaces = append(object.interfaces, interface_)
+			} else {
+				object.interfaces = append(object.interfaces, NewInterface(embeddedType, builder))
+			}
+		}
 	}
 
-	return objects
+	builder.grootTypes[t] = object
+	builder.types[object.name] = object.GraphQLType()
+	object.fields = getFields(t, builder)
+	object.GraphQLType()
+	return object
 }
