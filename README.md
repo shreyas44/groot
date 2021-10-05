@@ -218,4 +218,4 @@ No generated code, no boilerplate, composable, and type safe!
 ### Note
 
 - The only case where there's no type safety or type checking either by Go or Groot is for GraphQL interfaces
-- Although almost all use cases are covered (except the ones mentioned above), the library isn't teststed yet
+- Although almost all use cases are covered (except the ones mentioned above), the library isn't teststed yet. If there's anything else missing please open an issue!
