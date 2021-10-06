@@ -1,11 +1,12 @@
 # Objects
 
-### Object Definition
+[Objects](https://graphql.org/learn/schema/#type-system) can be defined using a regular Go struct.
 
-### Custom Resolvers
+```go
+type User struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+```
 
-### Nullables
-
-### Deprecating Fields
-
-### Field Description
+For more info on field definitions, see [Field Definitions](./field-definitions).

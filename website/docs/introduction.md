@@ -12,7 +12,7 @@ Go already has a couple of implementation of GraphQL, so why another one?
 
 ### Type Safety
 
-Go is statically typed, and GraphQL is type safe, which means we don't need to and shouldn't use `interface{}` anywhere. A simple user struct with custom resolvers would look something like this. Although most type checking is done by Go, additional checks like [resolver](./resolvers) return types are done by Groot on startup to avoid type errors altogether.
+Go is statically typed, and GraphQL is type safe, which means we don't need to and shouldn't use `interface{}` anywhere. A simple user struct with custom resolvers would look something like this. Although most type checking is done by Go, additional checks like [resolver](./type-definitions/field-resolvers) return types are done by Groot on startup to avoid type errors altogether.
 
 ```go
 type User struct {
@@ -38,3 +38,11 @@ Seriously, it is.
 ---
 
 Groot achieves all this while still being compatible with extensions built for `github.com/graphql-go/graphql`, currently the most popular implementation of GraphQL in Go.
+
+#### Features Not Supported but Coming Soon:
+
+- [Custom Scalars](https://github.com/shreyas44/groot/issues/3)
+- [Custom Directives](https://github.com/shreyas44/groot/issues/4)
+- [Subscriptions](https://github.com/shreyas44/groot/issues/1)
+- [Descriptions for type definitions](https://github.com/shreyas44/groot/issues/2)
+- [Enum value description and deprecation](https://github.com/shreyas44/groot/issues/2)

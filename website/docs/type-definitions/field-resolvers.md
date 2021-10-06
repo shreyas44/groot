@@ -1,4 +1,4 @@
-# Resolvers
+# Field Resolvers
 
 We'll be working with the below `Post` struct for this section.
 

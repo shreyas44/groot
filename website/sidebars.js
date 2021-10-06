@@ -17,14 +17,14 @@ module.exports = {
   docs: [
     "introduction",
     "getting-started",
-    "resolvers",
-    "nullable",
     "context",
     {
       type: "category",
       label: "Type Definitions",
       collapsed: false,
       items: [
+        "type-definitions/field-definitions",
+        "type-definitions/field-resolvers",
         "type-definitions/object",
         "type-definitions/input",
         "type-definitions/interface",

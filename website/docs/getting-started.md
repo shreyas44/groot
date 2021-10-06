@@ -71,7 +71,7 @@ func (user User) ResolvePosts() (*[]Post, error) {
 }
 ```
 
-If the return type of the resolver is not the same as the return type of the field, Groot will panic on startup. For more details on resolvers and arguments check the [Resolvers](./resolvers) section.
+If the return type of the resolver is not the same as the return type of the field, Groot will panic on startup. For more details on resolvers and arguments check the [Field Resolvers](./type-definitions/field-resolvers) section.
 
 ### Queries
 
@@ -105,7 +105,7 @@ func (p Query) ResolvePost(args IDArgs) (*Post, error) {
 }
 ```
 
-Notice how we were able to accept arguments by having the first argument of the function with a struct type.
+Notice how we were able to accept arguments by having the type of first argument of the resolver as a struct.
 
 For a larger schema, you may think we would need to define a lot of fields and methods on the single `Query` type. While you would be right, we can avoid that by just [embedding structs](https://www.geeksforgeeks.org/composition-in-golangj/). You can find more info on embedding and composition in the [Composition](./composition) section.
 
