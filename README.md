@@ -1,8 +1,8 @@
 # Groot
 
-An easier way to create GraphQL APIs in Go.
+An easier way to create GraphQL APIs in Go. View full documentation [here](https://groot.shreyas44.com).
 
-It's built on top of [`github.com/graphql-go/graphql`](https://github.com/graphql-go/graphql), which means it should support most existing tooling built for it.
+Groot is built on top of [`github.com/graphql-go/graphql`](https://github.com/graphql-go/graphql), which means it should support most existing tooling built for it.
 
 ## Motivation
 
