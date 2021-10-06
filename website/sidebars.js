@@ -32,6 +32,7 @@ module.exports = {
         "type-definitions/enum",
       ],
     },
+    "comparison",
     "composition",
     "relay",
     "internals",

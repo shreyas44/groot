@@ -1,222 +1,48 @@
 # Groot
 
-A new and easier method to create GraphQL APIs in Go
+An easier way to create GraphQL APIs in Go.
 
-Currently, the main implementation of GraphQL in Go is https://github.com/graphql-go/graphql. However, creating GraphQL APIs using that package can get quite tedious and messy.
+It's built on top of [`github.com/graphql-go/graphql`](https://github.com/graphql-go/graphql), which means it should support most existing tooling built for it.
 
-Let's look at an example to create a simple GraphQL Schema
+## Motivation
 
-```graphql
-enum UserType {
-  ADMIN
-  USER
-}
+Go already has a couple of implementation of GraphQL, so why another one?
 
-type User {
-  id: String!
-  name: String!
-  type: UserType!
-  oldType: UserType! @deprecated(reason: "Old Field")
-}
+### Type Safety
 
-type Post {
-  id: String!
-  body: String
-  author: User!
-  # When the post was posted
-  timestamp: Int!
-}
-
-type Query {
-  user(id: String!) User
-  post(id: String!) Post
-}
-```
-
-What the code looks like with `github.com/graphql-go/graphql`
+Go is statically typed, and GraphQL is type safe, which means we don't need to and shouldn't use `interface{}` anywhere. A simple user struct with custom resolvers would look something like this. Although most type checking is done by Go, additional checks like [resolver](./type-definitions/field-resolvers) return types are done by Groot on startup to avoid type errors altogether.
 
 ```go
-func main() {
-	userTypeEnum := graphql.NewEnum(graphql.EnumConfig{
-		Name: "UserType",
-		Values: graphql.EnumValueConfigMap{
-			"ADMIN": &graphql.EnumValueConfig{
-				Value: "ADMIN",
-			},
-			"USER": &graphql.EnumValueConfig{
-				Value: "USER",
-			},
-		},
-	})
-
-	userObject := graphql.NewObject(graphql.ObjectConfig{
-		Name: "User",
-		Fields: graphql.Fields{
-			"id": &graphql.Field{
-				Type: graphql.NewNonNull(graphql.String),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return "anid", nil
-				},
-			},
-			"name": &graphql.Field{
-				Type: graphql.NewNonNull(graphql.String),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return "A Name", nil
-				},
-			},
-			"type": &graphql.Field{
-				Type: graphql.NewNonNull(UserTypeEnum),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return "ADMIN", nil
-				},
-			},
-			"oldType": &graphql.Field{
-				Type: graphql.NewNonNull(UserTypeEnum),
-				DeprecationReason: "Old Field",
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return "ADMIN", nil
-				}
-			},
-		},
-	})
-
-	postObject := graphql.NewObject(graphql.ObjectConfig{
-		Name: "Post",
-		Fields: graphql.Fields{
-			"id": &graphql.Field{
-				Type: graphql.NewNonNull(graphql.String),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return "anid", nil
-				},
-			},
-			"body": &graphql.Field{
-				Type: graphql.String,
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return "a body", nil
-				},
-			},
-			"timestamp": &graphql.Field{
-				Type: graphql.NewNonNull(graphql.Int),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return 12345, nil
-				},
-				Description: "When the post was posted",
-			},
-			"author": &graphql.Field{
-				Type: graphql.NewNonNull(userObject),
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return nil, nil
-				},
-			},
-		},
-	})
-
-	queryObject := graphql.NewObject(graphql.ObjectConfig{
-		Name: "Query",
-		Fields: graphql.Fields{
-			"user": &graphql.Field{
-				Args: graphql.FieldConfigArgument{
-					"id": &graphql.ArgumentConfig{
-						Type: graphql.NewNonNull(graphql.String),
-					},
-				},
-				Type: userObject,
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return db.User.Get(p.Args["id"])
-				},
-			},
-			"post": &graphql.Field{
-				Args: graphql.FieldConfigArgument{
-					"id": &graphql.ArgumentConfig{
-						Type: graphql.NewNonNull(graphql.String),
-					},
-				},
-				Type: postObject,
-				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-					return db.Post.Get(p.Args["id"])
-				},
-			},
-		},
-	})
-
-	schema := graphql.NewSchema(graphql.SchemaConfig{
-		Query: queryObject,
-	})
-}
-```
-
-As you can see, there are quite a few drawbacks to doing this. First, `interface{}`'s are used everywhere; we're not taking advantage of the type system in Go. Second, the code might become unnecessarily lengthy.
-
-In contrast, here's how you'd do it with `Groot`
-
-```go
-
-type UserType string
-
-const (
-	UserTypeAdmin UserType = "ADMIN"
-	UserTypeUser  UserType = "USER"
-)
-
-func (u UserType) Values() []string {
-	return []string{string(UserTypeAdmin), string(UserTypeUser)}
-}
-
 type User struct {
-	ID   string   `json:"id"`
-	Name string   `json:"name"`
-	Type UserType `json:"type"`
-	OldType UserType `json:"oldType" deprecate:"Old Field"`
-}
-
-type Post struct {
-	ID        string  `json:"id"`
-	// you can use a pointer to mark the field as nullable
-	Body      *string `json:"body"`
-	Timestamp int     `json:"timestamp" description:"When the post was posted"`
-	Author    User    `json:"author"`
-}
-
-type Query struct {
-	User *User `json:"user"`
-	Post *Post `json:"post"`
-}
-
-type IdArgs struct {
-	ID string `json:"id"`
-}
-
-func (query Query) ResolveUser(args IdArgs) (User, error) {
-	return db.User.Get(args.ID), nil
-}
-
-// you can either include or omit the arguments, context, and info based on the needs of your resolver.
-func (query Query) ResolvePost(args IdArgs, context context.Context, info graphql.ResolveInfo) (Post, error) {
-	return db.Post.Get(args.ID), nil
-}
-
-func main() {
-	schema := groot.NewSchema(groot.SchemaConfig{
-		Query: reflect.TypeOf(Query{})
-	})
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 ```
 
-As you can see, the code is much more readable, and takes full advantage of the Go type system. Groot also comes with default resolvers, and type checks the resolvers on startup. It's also intercompatible with `gtihub.com/graphql-go/graphql` since it uses `github.com/graphql-go/graphql` under the hood, and just provides a really nice abstraction on top of it. This means almost all extensions and libraries meant to be used with `github.com/graphql-go/graphql` can continue to be used with Groot.
+### Code First
 
-No generated code, no boilerplate, composable, and type safe!
+Although the schema first aproach has its advantages, code first is arguably easier to maintain in the long run without having to deal with federated schemas and schema stitching. For more info check out [this blog post](https://blog.logrocket.com/code-first-vs-schema-first-development-graphql/).
+
+When you work with Groot, in a way you're defining your schema first as well since you're defining the structure of your data (struct, interfaces, enums, etc) first.
+
+### No Boilerplate and Code Duplication
+
+The only thing we want to worry about is our types, resolvers, and business logic, nothing more. We also don't want to redeclare our types in Go as well as GraphQL, it can get cumbersome to maintain and keep track of.
+
+### Simple To Use
+
+Seriously, it is.
 
 ---
 
-### Features Not Yet Supported
+Groot achieves all this while still being compatible with extensions built for `github.com/graphql-go/graphql`, currently the most popular implementation of GraphQL in Go.
 
-- [ ] Subscriptions
-- [ ] Custom Scalars
-- [ ] Descriptions for type definitions
-- [ ] Enum value description and deprecation
+#### Features Not Supported but Coming Soon:
 
-### Note
+- [Custom Scalars](https://github.com/shreyas44/groot/issues/3)
+- [Custom Directives](https://github.com/shreyas44/groot/issues/4)
+- [Subscriptions](https://github.com/shreyas44/groot/issues/1)
+- [Descriptions for type definitions](https://github.com/shreyas44/groot/issues/2)
+- [Enum value description and deprecation](https://github.com/shreyas44/groot/issues/2)
 
-- The only case where there's no type safety or type checking either by Go or Groot is for GraphQL interfaces
-- Although almost all use cases are covered (except the ones mentioned above), the library isn't teststed yet.
-- If there's anything else missing please open an issue!
+_Note, the library isn't tested yet._
