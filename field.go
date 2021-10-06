@@ -71,22 +71,6 @@ func getArguments(t reflect.Type, builder *SchemaBuilder) []*Argument {
 	return arguments
 }
 
-func isTypeInterface(t reflect.Type) bool {
-	interfaceType := reflect.TypeOf((*InterfaceType)(nil)).Elem()
-
-	if !t.Implements(interfaceType) {
-		return false
-	}
-
-	for i := 0; i < t.NumField(); i++ {
-		if field := t.Field(i); field.Anonymous && field.Type.Implements(interfaceType) {
-			return !isTypeInterface(field.Type)
-		}
-	}
-
-	return true
-}
-
 func isTypeUnion(t reflect.Type) bool {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
@@ -99,8 +83,14 @@ func isTypeUnion(t reflect.Type) bool {
 }
 
 func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
+	enumType := reflect.TypeOf((*EnumType)(nil)).Elem()
+
 	if grootType, ok := builder.grootTypes[t]; ok {
 		return grootType
+	}
+
+	if t.Kind() == reflect.Interface && builder.grootTypes[t.Method(0).Type.Out(0)] != nil {
+		return builder.grootTypes[t.Method(0).Type.Out(0)]
 	}
 
 	switch t.Kind() {
@@ -110,11 +100,10 @@ func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 	case reflect.Slice:
 		return NewNonNull(NewArray(parseFieldType(t.Elem(), builder)))
 
-	case reflect.Struct:
-		if isTypeInterface(t) {
-			return NewNonNull(NewInterface(t, builder))
-		}
+	case reflect.Interface:
+		return NewNonNull(NewInterface(t, builder))
 
+	case reflect.Struct:
 		if isTypeUnion(t) {
 			return NewNonNull(NewUnion(t, builder))
 		}
@@ -125,7 +114,7 @@ func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 		return NewNonNull(NewScalar(t, builder))
 
 	case reflect.String:
-		if t.Name() == "string" {
+		if t.Name() == "string" || !t.Implements(enumType) {
 			return NewNonNull(NewScalar(t, builder))
 		}
 
@@ -182,7 +171,6 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 			returnType = structField.Type
 
 			contextInterface = reflect.TypeOf((*context.Context)(nil)).Elem()
-			interfaceType    = reflect.TypeOf((*InterfaceType)(nil)).Elem()
 			errorInterface   = reflect.TypeOf((*error)(nil)).Elem()
 			resolverInfoType = reflect.TypeOf(graphql.ResolveInfo{})
 
@@ -208,18 +196,7 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 			)
 		}
 
-		_, ok := GetNullable(grootType).(*Interface)
-		if ok && (methodType.Out(0) != interfaceType || !methodType.Out(1).Implements(errorInterface)) {
-			message := fmt.Sprintf(
-				"return type of (%s, error) was expected for resolver %s, got (%s, %s)",
-				interfaceType.Name(),
-				method.Name,
-				methodType.Out(0).Name(),
-				methodType.Out(1).Name(),
-			)
-
-			panic(message)
-		} else if !ok && (methodType.Out(0) != returnType || !methodType.Out(1).Implements(errorInterface)) {
+		if methodType.Out(0) != returnType || !methodType.Out(1).Implements(errorInterface) {
 			message := fmt.Sprintf(
 				"return type of (%s, error) was expected for resolver %s, got (%s, %s)",
 				returnType.Name(),

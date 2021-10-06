@@ -13,6 +13,7 @@ type GrootType interface {
 type SchemaConfig struct {
 	Query      reflect.Type
 	Mutation   reflect.Type
+	Types      []reflect.Type
 	Extensions []graphql.Extension
 }
 
@@ -37,6 +38,7 @@ func NewSchema(config SchemaConfig) (graphql.Schema, error) {
 	builder := NewSchemaBuilder()
 	schemaConfig := graphql.SchemaConfig{
 		Extensions: config.Extensions,
+		Types:      []graphql.Type{},
 	}
 
 	if config.Query != nil {
@@ -45,6 +47,10 @@ func NewSchema(config SchemaConfig) (graphql.Schema, error) {
 
 	if config.Mutation != nil {
 		schemaConfig.Mutation = builder.parseAndGetRoot(config.Mutation)
+	}
+
+	for _, t := range config.Types {
+		schemaConfig.Types = append(schemaConfig.Types, NewObject(t, builder).GraphQLType())
 	}
 
 	return graphql.NewSchema(schemaConfig)

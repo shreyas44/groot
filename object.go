@@ -71,8 +71,6 @@ func NewObject(t reflect.Type, builder *SchemaBuilder) *Object {
 	}
 
 	var (
-		interfaceType    = reflect.TypeOf((*InterfaceType)(nil)).Elem()
-		embeddedTypes    = []reflect.Type{}
 		structName       = t.Name()
 		structFieldCount = t.NumField()
 		object           = &Object{
@@ -84,18 +82,11 @@ func NewObject(t reflect.Type, builder *SchemaBuilder) *Object {
 	)
 
 	for i := 0; i < structFieldCount; i++ {
-		structField := t.Field(i)
-		if structField.Type.Kind() == reflect.Struct && structField.Anonymous && structField.Type.Implements(interfaceType) {
-			embeddedTypes = append(embeddedTypes, structField.Type)
-		}
-	}
-
-	for _, embeddedType := range embeddedTypes {
-		if embeddedType.Implements(interfaceType) {
-			if interface_, ok := builder.grootTypes[embeddedType].(*Interface); ok {
+		if field := t.Field(i); field.Anonymous && isInterfaceDefinition(field.Type) {
+			if interface_, ok := builder.grootTypes[field.Type].(*Interface); ok {
 				object.interfaces = append(object.interfaces, interface_)
 			} else {
-				object.interfaces = append(object.interfaces, NewInterface(embeddedType, builder))
+				object.interfaces = append(object.interfaces, NewInterface(field.Type, builder))
 			}
 		}
 	}

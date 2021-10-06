@@ -1,17 +1,13 @@
 package groot
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
 )
 
-// TODO: add better typing support
-type InterfaceType interface {
-	ResolveInterfaceType(value interface{}, ctx context.Context, info graphql.ResolveInfo) string
-}
+type InterfaceType struct{}
 
 type Interface struct {
 	name        string
@@ -40,38 +36,82 @@ func (i *Interface) GraphQLType() graphql.Type {
 		Name:        i.name,
 		Description: i.description,
 		Fields:      fields,
-		// TODO: fix value type
 		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
-			name := p.Value.(InterfaceType).ResolveInterfaceType(p.Value, p.Context, p.Info)
-			return i.builder.types[name].(*graphql.Object)
+			valueType := reflect.TypeOf(p.Value)
+			return i.builder.grootTypes[valueType].GraphQLType().(*graphql.Object)
 		},
 	})
 
 	return i.interface_
 }
 
-func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
+func isInterfaceDefinition(t reflect.Type) bool {
+	interfaceType := reflect.TypeOf(InterfaceType{})
+
 	if t.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Struct, received %s", t.Kind()))
+		return false
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		if field := t.Field(i); field.Anonymous && field.Type == interfaceType {
+			return true
+		}
+	}
+
+	return false
+}
+
+func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
+	if t.Kind() != reflect.Interface && t.Kind() != reflect.Struct {
+		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Interface or reflect.Struct, received %s", t.Kind()))
 	}
 
 	var (
-		interfaceType = reflect.TypeOf((*InterfaceType)(nil)).Elem()
-		structName    = t.Name()
-		interface_    = &Interface{
-			name:        structName,
+		interfaceDefinition reflect.Type
+		name                string
+		interface_          = &Interface{
 			builder:     builder,
 			reflectType: t,
 		}
 	)
 
-	if !t.Implements(interfaceType) {
-		panic(fmt.Sprintf("%s must implement groot.InterfaceType", structName))
+	if t.Kind() == reflect.Struct {
+		interfaceDefinition = t
+		name = t.Name()
+		name = name[0 : len(name)-len("Definition")+1]
+	} else if t.Kind() == reflect.Interface {
+		name = t.Name()
+
+		if t.NumMethod() != 1 {
+			panic("interface type can only have one method")
+		}
+
+		method := t.Method(0).Type
+
+		if method.NumIn() != 0 {
+			panic("interface type method must have no input arguments")
+		}
+
+		if method.NumOut() != 1 {
+			panic("interface type method must have one output argument")
+		}
+
+		interfaceDefinition = method.Out(0)
+
+		if interfaceDefinition.Kind() != reflect.Struct {
+			panic("interface type method must return a struct")
+		}
+
+		if !isInterfaceDefinition(interfaceDefinition) {
+			panic("interface type method must return a struct with groot.InterfaceType embedded")
+		}
 	}
 
+	interface_.name = name
 	builder.grootTypes[t] = interface_
+	builder.grootTypes[interfaceDefinition] = interface_
 	builder.types[interface_.name] = interface_.GraphQLType()
-	interface_.fields = getFields(t, builder)
+	interface_.fields = getFields(interfaceDefinition, builder)
 	interface_.GraphQLType()
 	return interface_
 }
