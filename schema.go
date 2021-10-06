@@ -50,7 +50,9 @@ func NewSchema(config SchemaConfig) (graphql.Schema, error) {
 	}
 
 	for _, t := range config.Types {
-		schemaConfig.Types = append(schemaConfig.Types, NewObject(t, builder).GraphQLType())
+		if _, ok := builder.grootTypes[t]; !ok {
+			schemaConfig.Types = append(schemaConfig.Types, NewObject(t, builder).GraphQLType())
+		}
 	}
 
 	return graphql.NewSchema(schemaConfig)

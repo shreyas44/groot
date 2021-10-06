@@ -90,7 +90,7 @@ func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 	}
 
 	if grootType, ok := builder.grootTypes[t]; ok {
-		return grootType
+		return NewNonNull(grootType)
 	}
 
 	switch t.Kind() {
@@ -102,10 +102,10 @@ func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 
 	case reflect.Interface:
 
-		if numMethod := t.NumMethod(); numMethod > 1 {
-			if method := t.Method(0); method.Type.NumOut() > 1 {
+		if numMethod := t.NumMethod(); numMethod >= 1 {
+			if method := t.Method(0); method.Type.NumOut() >= 1 {
 				if out := method.Type.Out(0); builder.grootTypes[out] != nil {
-					return builder.grootTypes[out]
+					return NewNonNull(builder.grootTypes[out])
 				}
 			}
 		}
