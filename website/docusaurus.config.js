@@ -7,9 +7,8 @@ const darkCodeTheme = require("prism-react-renderer/themes/dracula");
   module.exports = {
     title: "Groot",
     tagline: "GraphQL in Go",
-    url: "https://shreyas44.github.io",
-    baseUrl: "/groot/",
-    onBrokenLinks: "throw",
+    url: "https://groot.shreyas44.com",
+    baseUrl: "/",
     onBrokenMarkdownLinks: "warn",
     // favicon: 'img/favicon.ico',
     organizationName: "shreyas44",
@@ -21,6 +20,7 @@ const darkCodeTheme = require("prism-react-renderer/themes/dracula");
         /** @type {import('@docusaurus/preset-classic').Options} */
         ({
           docs: {
+            routeBasePath: "/",
             sidebarPath: require.resolve("./sidebars.js"),
             editUrl: "https://github.com/shreyas44/groot/edit/main/docs/",
           },
@@ -41,10 +41,6 @@ const darkCodeTheme = require("prism-react-renderer/themes/dracula");
             },
           ],
         },
-        // footer: {
-        //   style: "dark",
-        //   copyright: `Copyright © ${new Date().getFullYear()} Shreyas Built with Docusaurus.`,
-        // },
         prism: {
           theme: lightCodeTheme,
           darkTheme: darkCodeTheme,
