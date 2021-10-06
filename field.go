@@ -85,12 +85,12 @@ func isTypeUnion(t reflect.Type) bool {
 func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 	enumType := reflect.TypeOf((*EnumType)(nil)).Elem()
 
-	if grootType, ok := builder.grootTypes[t]; ok {
-		return grootType
+	if t.Kind() == reflect.Struct && isInterfaceDefinition(t) {
+		panic("type of field cannot be an interface definition")
 	}
 
-	if t.Kind() == reflect.Interface && builder.grootTypes[t.Method(0).Type.Out(0)] != nil {
-		return builder.grootTypes[t.Method(0).Type.Out(0)]
+	if grootType, ok := builder.grootTypes[t]; ok {
+		return grootType
 	}
 
 	switch t.Kind() {
@@ -101,6 +101,15 @@ func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 		return NewNonNull(NewArray(parseFieldType(t.Elem(), builder)))
 
 	case reflect.Interface:
+
+		if numMethod := t.NumMethod(); numMethod > 1 {
+			if method := t.Method(0); method.Type.NumOut() > 1 {
+				if out := method.Type.Out(0); builder.grootTypes[out] != nil {
+					return builder.grootTypes[out]
+				}
+			}
+		}
+
 		return NewNonNull(NewInterface(t, builder))
 
 	case reflect.Struct:
