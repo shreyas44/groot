@@ -83,7 +83,10 @@ func isTypeUnion(t reflect.Type) bool {
 }
 
 func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
-	enumType := reflect.TypeOf((*EnumType)(nil)).Elem()
+	var (
+		enumType   = reflect.TypeOf((*EnumType)(nil)).Elem()
+		scalarType = reflect.TypeOf((*ScalarType)(nil)).Elem()
+	)
 
 	if t.Kind() == reflect.Struct && isInterfaceDefinition(t) {
 		panic("type of field cannot be an interface definition")
@@ -91,6 +94,14 @@ func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 
 	if grootType, ok := builder.grootTypes[t]; ok {
 		return NewNonNull(grootType)
+	}
+
+	if ptrT := reflect.PtrTo(t); ptrT.Implements(scalarType) {
+		if scalar, ok := builder.grootTypes[ptrT]; ok {
+			return scalar
+		}
+
+		return NewNonNull(NewScalar(ptrT, builder))
 	}
 
 	switch t.Kind() {
@@ -274,7 +285,11 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 				switch arg {
 				case fieldResolverArgInputArg:
 					structInterface := reflect.New(methodType.In(1)).Interface()
-					jsonBytes, _ := json.Marshal(p.Args)
+					jsonBytes, err := json.Marshal(p.Args)
+					if err != nil {
+						return nil, err
+					}
+
 					json.Unmarshal(jsonBytes, &structInterface)
 					args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
 				case fieldResolverArgContext:
