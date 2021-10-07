@@ -52,17 +52,21 @@ func parseObjectArgument(t reflect.Type, builder *SchemaBuilder) graphql.Input {
 }
 
 func parseScalarArgument(t reflect.Type, builder *SchemaBuilder) graphql.Input {
-	scalars := map[reflect.Kind]graphql.Type{
-		reflect.Int:     graphql.Int,
-		reflect.String:  graphql.String,
-		reflect.Bool:    graphql.Boolean,
-		reflect.Float32: graphql.Float,
+	if t.Kind() == reflect.Ptr {
+		if scalar, ok := builder.grootTypes[t]; ok {
+			return scalar.GraphQLType()
+		}
 	}
 
-	return scalars[t.Kind()]
+	return NewScalar(t, builder).GraphQLType()
 }
 
 func parseArgumentType(t reflect.Type, builder *SchemaBuilder) graphql.Input {
+	scalarType := reflect.TypeOf((*ScalarType)(nil)).Elem()
+	if reflect.PtrTo(t).Implements(scalarType) {
+		return parseScalarArgument(reflect.PtrTo(t), builder)
+	}
+
 	switch t.Kind() {
 	case reflect.Ptr:
 		return parseNullableArgument(t, builder)
@@ -70,7 +74,11 @@ func parseArgumentType(t reflect.Type, builder *SchemaBuilder) graphql.Input {
 		return graphql.NewNonNull(parseArrayArgument(t, builder))
 	case reflect.Struct:
 		return graphql.NewNonNull(parseObjectArgument(t, builder))
-	case reflect.Int, reflect.Float32, reflect.String, reflect.Bool:
+	case
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Float32, reflect.Float64,
+		reflect.String, reflect.Bool:
 		return graphql.NewNonNull(parseScalarArgument(t, builder))
 	}
 
