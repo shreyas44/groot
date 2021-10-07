@@ -19,18 +19,46 @@ type Object struct {
 	reflectType reflect.Type
 }
 
-func (object *Object) GraphQLType() graphql.Type {
-	if object.object != nil {
-		for _, field := range object.fields {
-			object.object.AddFieldConfig(field.name, field.GraphQLField())
-		}
-
-		return object.object
+func NewObject(t reflect.Type, builder *SchemaBuilder) *Object {
+	if parserType, _ := getParserType(t); parserType != ParserObject {
+		err := fmt.Errorf(
+			"groot: reflect.Type %s passed to NewObject must have parser type ParserObject, received %s",
+			t.Name(),
+			parserType,
+		)
+		panic(err)
 	}
 
-	fields := graphql.Fields{}
-	for _, field := range object.fields {
-		fields[field.name] = field.GraphQLField()
+	var (
+		structName       = t.Name()
+		structFieldCount = t.NumField()
+		object           = &Object{
+			name:        structName,
+			interfaces:  []*Interface{},
+			builder:     builder,
+			reflectType: t,
+		}
+	)
+
+	builder.grootTypes[t] = object
+
+	for i := 0; i < structFieldCount; i++ {
+		if field := t.Field(i); field.Anonymous && isInterfaceDefinition(field.Type) {
+			if interface_, ok := builder.grootTypes[field.Type].(*Interface); ok {
+				object.interfaces = append(object.interfaces, interface_)
+			} else {
+				object.interfaces = append(object.interfaces, NewInterface(field.Type, builder))
+			}
+		}
+	}
+
+	object.fields = getFields(t, builder)
+	return object
+}
+
+func (object *Object) GraphQLType() graphql.Type {
+	if object.object != nil {
+		return object.object
 	}
 
 	interfaces := []*graphql.Interface{}
@@ -41,11 +69,19 @@ func (object *Object) GraphQLType() graphql.Type {
 	object.object = graphql.NewObject(graphql.ObjectConfig{
 		Name:        object.name,
 		Description: object.description,
-		Fields:      fields,
+		Fields:      graphql.Fields{},
 		Interfaces:  interfaces,
 	})
 
+	for _, field := range object.fields {
+		object.object.AddFieldConfig(field.name, field.GraphQLField())
+	}
+
 	return object.object
+}
+
+func (object *Object) ReflectType() reflect.Type {
+	return object.reflectType
 }
 
 func getFields(t reflect.Type, builder *SchemaBuilder) []*Field {
@@ -63,37 +99,4 @@ func getFields(t reflect.Type, builder *SchemaBuilder) []*Field {
 	}
 
 	return fields
-}
-
-func NewObject(t reflect.Type, builder *SchemaBuilder) *Object {
-	if t.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Struct, received %s", t.Kind()))
-	}
-
-	var (
-		structName       = t.Name()
-		structFieldCount = t.NumField()
-		object           = &Object{
-			name:        structName,
-			interfaces:  []*Interface{},
-			builder:     builder,
-			reflectType: t,
-		}
-	)
-
-	for i := 0; i < structFieldCount; i++ {
-		if field := t.Field(i); field.Anonymous && isInterfaceDefinition(field.Type) {
-			if interface_, ok := builder.grootTypes[field.Type].(*Interface); ok {
-				object.interfaces = append(object.interfaces, interface_)
-			} else {
-				object.interfaces = append(object.interfaces, NewInterface(field.Type, builder))
-			}
-		}
-	}
-
-	builder.grootTypes[t] = object
-	builder.types[object.name] = object.GraphQLType()
-	object.fields = getFields(t, builder)
-	object.GraphQLType()
-	return object
 }

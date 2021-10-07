@@ -15,40 +15,14 @@ type InputObject struct {
 	reflectType reflect.Type
 }
 
-func (object *InputObject) GraphQLType() graphql.Type {
-	if object.object != nil {
-		for _, field := range object.fields {
-			object.object.AddFieldConfig(field.name, &graphql.InputObjectFieldConfig{
-				Type:         field.GraphQLArgument().Type,
-				Description:  field.description,
-				DefaultValue: field.default_,
-			})
-		}
-
-		return object.object
-	}
-
-	fields := graphql.InputObjectConfigFieldMap{}
-	for _, field := range object.fields {
-		fields[field.name] = &graphql.InputObjectFieldConfig{
-			Type:         field.type_,
-			Description:  field.description,
-			DefaultValue: field.default_,
-		}
-	}
-
-	object.object = graphql.NewInputObject(graphql.InputObjectConfig{
-		Name:        object.name,
-		Fields:      fields,
-		Description: object.Description,
-	})
-
-	return object.object
-}
-
 func NewInputObject(t reflect.Type, builder *SchemaBuilder) *InputObject {
-	if t.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Struct, received %s", t.Kind()))
+	if parserType, _ := getParserType(t); parserType != ParserObject {
+		err := fmt.Errorf(
+			"groot: reflect.Type %s passed to NewInputObject must have parser type ParserObject, received %s",
+			t.Name(),
+			parserType,
+		)
+		panic(err)
 	}
 
 	structName := t.Name()
@@ -58,12 +32,11 @@ func NewInputObject(t reflect.Type, builder *SchemaBuilder) *InputObject {
 		reflectType: t,
 	}
 
-	builder.types[structName] = inputObject.GraphQLType()
 	structFieldCount := t.NumField()
 
 	for i := 0; i < structFieldCount; i++ {
 		structField := t.Field(i)
-		field := NewArgument(structField, builder)
+		field := NewArgument(t, structField, builder)
 
 		if field != nil {
 			inputObject.fields = append(inputObject.fields, field)
@@ -71,6 +44,31 @@ func NewInputObject(t reflect.Type, builder *SchemaBuilder) *InputObject {
 	}
 
 	builder.grootTypes[t] = inputObject
-	builder.types[structName] = inputObject.GraphQLType()
 	return inputObject
+}
+
+func (object *InputObject) GraphQLType() graphql.Type {
+	if object.object != nil {
+		return object.object
+	}
+
+	object.object = graphql.NewInputObject(graphql.InputObjectConfig{
+		Name:        object.name,
+		Fields:      graphql.InputObjectConfigFieldMap{},
+		Description: object.Description,
+	})
+
+	for _, field := range object.fields {
+		object.object.AddFieldConfig(field.name, &graphql.InputObjectFieldConfig{
+			Type:         field.type_.GraphQLType(),
+			Description:  field.description,
+			DefaultValue: field.default_,
+		})
+	}
+
+	return object.object
+}
+
+func (object *InputObject) ReflectType() reflect.Type {
+	return object.reflectType
 }

@@ -1,6 +1,7 @@
 package groot
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
@@ -15,6 +16,28 @@ type Enum struct {
 	values      []string
 	enum        *graphql.Enum
 	reflectType reflect.Type
+}
+
+func NewEnum(t reflect.Type, builder *SchemaBuilder) *Enum {
+	if parserType, _ := getParserType(t); parserType != ParserEnum {
+		err := fmt.Sprintf(
+			"groot: reflect.Type %s passed to NewEnum must have parser type of ParserEnum, received %s",
+			t.Name(),
+			parserType,
+		)
+		panic(err)
+	}
+
+	name := t.Name()
+	enumType := reflect.New(t).Interface().(EnumType)
+	enum := &Enum{
+		name:        name,
+		values:      enumType.Values(),
+		reflectType: t,
+	}
+
+	builder.grootTypes[t] = enum
+	return enum
 }
 
 func (enum *Enum) GraphQLType() graphql.Type {
@@ -35,37 +58,9 @@ func (enum *Enum) GraphQLType() graphql.Type {
 		Values: values,
 	})
 
-	graphql.NewEnum(graphql.EnumConfig{
-		Name: "UserType",
-		Values: graphql.EnumValueConfigMap{
-			"ADMIN": &graphql.EnumValueConfig{
-				Value: "ADMIN",
-			},
-			"USER": &graphql.EnumValueConfig{
-				Value: "USER",
-			},
-		},
-	})
-
 	return enum.enum
 }
 
-func NewEnum(t reflect.Type, builder *SchemaBuilder) *Enum {
-	enumInterfaceType := reflect.TypeOf((*EnumType)(nil)).Elem()
-	name := t.Name()
-
-	if !t.Implements(enumInterfaceType) {
-		panic("enum must implement the groot.EnumType interface")
-	}
-
-	enumType := reflect.New(t).Interface().(EnumType)
-	enum := &Enum{
-		name:        name,
-		values:      enumType.Values(),
-		reflectType: t,
-	}
-
-	builder.grootTypes[t] = enum
-	builder.types[name] = enum.GraphQLType()
-	return enum
+func (enum *Enum) ReflectType() reflect.Type {
+	return enum.reflectType
 }

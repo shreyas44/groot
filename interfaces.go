@@ -18,52 +18,15 @@ type Interface struct {
 	reflectType reflect.Type
 }
 
-func (i *Interface) GraphQLType() graphql.Type {
-	if i.interface_ != nil {
-		for _, field := range i.fields {
-			i.interface_.AddFieldConfig(field.name, field.GraphQLField())
-		}
-
-		return i.interface_
-	}
-
-	fields := graphql.Fields{}
-	for _, field := range i.fields {
-		fields[field.name] = field.GraphQLField()
-	}
-
-	i.interface_ = graphql.NewInterface(graphql.InterfaceConfig{
-		Name:        i.name,
-		Description: i.description,
-		Fields:      fields,
-		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
-			valueType := reflect.TypeOf(p.Value)
-			return i.builder.grootTypes[valueType].GraphQLType().(*graphql.Object)
-		},
-	})
-
-	return i.interface_
-}
-
-func isInterfaceDefinition(t reflect.Type) bool {
-	interfaceType := reflect.TypeOf(InterfaceType{})
-
-	if t.Kind() != reflect.Struct {
-		return false
-	}
-
-	for i := 0; i < t.NumField(); i++ {
-		if field := t.Field(i); field.Anonymous && field.Type == interfaceType {
-			return true
-		}
-	}
-
-	return false
-}
-
 func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
-	if t.Kind() != reflect.Interface && t.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Interface or reflect.Struct, received %s", t.Kind()))
+	parserType, _ := getParserType(t)
+	if parserType != ParserInterface && parserType != ParserInterfaceDefinition {
+		err := fmt.Errorf(
+			"groot: reflect.Type %s passed to NewInterface must have parser type ParserInterface or ParserInterfaceDefinition, received %s",
+			t.Name(),
+			parserType,
+		)
+		panic(err)
 	}
 
 	var (
@@ -75,11 +38,14 @@ func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
 		}
 	)
 
-	if t.Kind() == reflect.Struct {
+	builder.grootTypes[t] = interface_
+	builder.grootTypes[interfaceDefinition] = interface_
+
+	if parserType == ParserInterfaceDefinition {
 		interfaceDefinition = t
 		name = t.Name()
 		name = name[0 : len(name)-len("Definition")+1]
-	} else if t.Kind() == reflect.Interface {
+	} else {
 		name = t.Name()
 
 		if t.NumMethod() != 1 {
@@ -108,10 +74,35 @@ func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
 	}
 
 	interface_.name = name
-	builder.grootTypes[t] = interface_
-	builder.grootTypes[interfaceDefinition] = interface_
-	builder.types[interface_.name] = interface_.GraphQLType()
 	interface_.fields = getFields(interfaceDefinition, builder)
-	interface_.GraphQLType()
 	return interface_
 }
+
+func (i *Interface) GraphQLType() graphql.Type {
+	if i.interface_ != nil {
+		return i.interface_
+	}
+
+	i.interface_ = graphql.NewInterface(graphql.InterfaceConfig{
+		Name:        i.name,
+		Description: i.description,
+		Fields:      graphql.Fields{},
+		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
+			valueType := reflect.TypeOf(p.Value)
+			return i.builder.grootTypes[valueType].GraphQLType().(*graphql.Object)
+		},
+	})
+
+	for _, field := range i.fields {
+		i.interface_.AddFieldConfig(field.name, field.GraphQLField())
+	}
+
+	return i.interface_
+}
+
+func (i *Interface) ReflectType() reflect.Type {
+	return i.reflectType
+}
+
+func validateInterface()           {}
+func validateInterfaceDefinition() {}
