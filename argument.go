@@ -15,7 +15,7 @@ type Argument struct {
 	argument    *graphql.ArgumentConfig
 }
 
-func NewArgument(structType reflect.Type, structField reflect.StructField, builder *SchemaBuilder) *Argument {
+func NewArgument(structType reflect.Type, structField reflect.StructField, builder *SchemaBuilder) (*Argument, error) {
 	if parserType, _ := getParserType(structType); parserType != ParserObject {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewArgument must have parser type ParserObject, received %s",
@@ -26,18 +26,18 @@ func NewArgument(structType reflect.Type, structField reflect.StructField, build
 	}
 
 	var (
-		name           string
-		description    string
-		defaultValue   string
-		grootType, err = getArgumentGrootType(structType, structField, builder)
+		name         string
+		description  string
+		defaultValue string
 	)
 
+	grootType, err := getArgumentGrootType(structType, structField, builder)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if ignoreTag := structField.Tag.Get("groot_ignore"); ignoreTag == "true" {
-		return nil
+		return nil, nil
 	}
 
 	if jsonTag := structField.Tag.Get("json"); jsonTag != "" {
@@ -57,7 +57,7 @@ func NewArgument(structType reflect.Type, structField reflect.StructField, build
 		type_:       grootType,
 	}
 
-	return argument
+	return argument, nil
 }
 
 func (field *Argument) GraphQLArgument() *graphql.ArgumentConfig {
@@ -110,11 +110,13 @@ func getArgumentGrootType(structType reflect.Type, structField reflect.StructFie
 		return NewNonNull(grootType), nil
 	}
 
+	var argType GrootType
+
 	switch parserType {
 	case ParserScalar, ParserCustomScalar:
-		return NewNonNull(NewScalar(structField.Type, builder)), nil
+		argType, err = NewScalar(structField.Type, builder)
 	case ParserObject:
-		return NewNonNull(NewInputObject(structField.Type, builder)), nil
+		argType, err = NewObject(structField.Type, builder)
 	case ParserList:
 		field := structField
 		field.Type = field.Type.Elem()
@@ -136,9 +138,12 @@ func getArgumentGrootType(structType reflect.Type, structField reflect.StructFie
 		return GetNullable(itemType), nil
 
 	case ParserEnum:
-		return NewNonNull(NewEnum(structField.Type, builder)), nil
+		argType, err = NewEnum(structField.Type, builder)
 	}
 
-	// should be unreachable
-	panic("groot: invalid argument type")
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNonNull(argType), nil
 }

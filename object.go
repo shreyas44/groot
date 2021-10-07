@@ -19,7 +19,7 @@ type Object struct {
 	reflectType reflect.Type
 }
 
-func NewObject(t reflect.Type, builder *SchemaBuilder) *Object {
+func NewObject(t reflect.Type, builder *SchemaBuilder) (*Object, error) {
 	if parserType, _ := getParserType(t); parserType != ParserObject {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewObject must have parser type ParserObject, received %s",
@@ -47,13 +47,23 @@ func NewObject(t reflect.Type, builder *SchemaBuilder) *Object {
 			if interface_, ok := builder.grootTypes[field.Type].(*Interface); ok {
 				object.interfaces = append(object.interfaces, interface_)
 			} else {
-				object.interfaces = append(object.interfaces, NewInterface(field.Type, builder))
+				interface_, err := NewInterface(field.Type, builder)
+				if err != nil {
+					return nil, err
+				}
+
+				object.interfaces = append(object.interfaces, interface_)
 			}
 		}
 	}
 
-	object.fields = getFields(t, builder)
-	return object
+	fields, err := getFields(t, builder)
+	if err != nil {
+		return nil, err
+	}
+
+	object.fields = fields
+	return object, nil
 }
 
 func (object *Object) GraphQLType() graphql.Type {
@@ -84,7 +94,7 @@ func (object *Object) ReflectType() reflect.Type {
 	return object.reflectType
 }
 
-func getFields(t reflect.Type, builder *SchemaBuilder) []*Field {
+func getFields(t reflect.Type, builder *SchemaBuilder) ([]*Field, error) {
 	fields := []*Field{}
 	fieldCount := t.NumField()
 
@@ -92,11 +102,24 @@ func getFields(t reflect.Type, builder *SchemaBuilder) []*Field {
 		structField := t.Field(i)
 
 		if structField.Anonymous {
-			fields = append(fields, getFields(structField.Type, builder)...)
-		} else if field := NewField(t, structField, builder); field != nil {
+			embeddedFields, err := getFields(structField.Type, builder)
+			if err != nil {
+				return nil, err
+			}
+
+			fields = append(fields, embeddedFields...)
+			continue
+		}
+
+		field, err := NewField(t, structField, builder)
+		if err != nil {
+			return nil, err
+		}
+
+		if field != nil {
 			fields = append(fields, field)
 		}
 	}
 
-	return fields
+	return fields, nil
 }

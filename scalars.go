@@ -27,7 +27,7 @@ type Scalar struct {
 	reflectType reflect.Type
 }
 
-func NewScalar(t reflect.Type, builder *SchemaBuilder) *Scalar {
+func NewScalar(t reflect.Type, builder *SchemaBuilder) (*Scalar, error) {
 	parserType, _ := getParserType(t)
 	if parserType != ParserScalar && parserType != ParserCustomScalar {
 		err := fmt.Errorf(
@@ -66,7 +66,7 @@ func NewScalar(t reflect.Type, builder *SchemaBuilder) *Scalar {
 	}
 
 	builder.grootTypes[t] = scalar
-	return scalar
+	return scalar, nil
 }
 
 func (scalar *Scalar) GraphQLType() graphql.Type {

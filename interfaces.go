@@ -18,7 +18,7 @@ type Interface struct {
 	reflectType reflect.Type
 }
 
-func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
+func NewInterface(t reflect.Type, builder *SchemaBuilder) (*Interface, error) {
 	parserType, _ := getParserType(t)
 	if parserType != ParserInterface && parserType != ParserInterfaceDefinition {
 		err := fmt.Errorf(
@@ -47,16 +47,21 @@ func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
 		name = name[0 : len(name)-len("Definition")+1]
 	} else {
 		if err := validateInterface(t); err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		name = t.Name()
 		interfaceDefinition = t.Method(0).Type.Out(0)
 	}
 
+	fields, err := getFields(interfaceDefinition, builder)
+	if err != nil {
+		return nil, err
+	}
+
 	interface_.name = name
-	interface_.fields = getFields(interfaceDefinition, builder)
-	return interface_
+	interface_.fields = fields
+	return interface_, nil
 }
 
 func (i *Interface) GraphQLType() graphql.Type {

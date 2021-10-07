@@ -18,7 +18,7 @@ type Enum struct {
 	reflectType reflect.Type
 }
 
-func NewEnum(t reflect.Type, builder *SchemaBuilder) *Enum {
+func NewEnum(t reflect.Type, builder *SchemaBuilder) (*Enum, error) {
 	if parserType, _ := getParserType(t); parserType != ParserEnum {
 		err := fmt.Sprintf(
 			"groot: reflect.Type %s passed to NewEnum must have parser type of ParserEnum, received %s",
@@ -37,7 +37,7 @@ func NewEnum(t reflect.Type, builder *SchemaBuilder) *Enum {
 	}
 
 	builder.grootTypes[t] = enum
-	return enum
+	return enum, nil
 }
 
 func (enum *Enum) GraphQLType() graphql.Type {

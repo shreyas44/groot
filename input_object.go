@@ -15,7 +15,7 @@ type InputObject struct {
 	reflectType reflect.Type
 }
 
-func NewInputObject(t reflect.Type, builder *SchemaBuilder) *InputObject {
+func NewInputObject(t reflect.Type, builder *SchemaBuilder) (*InputObject, error) {
 	if parserType, _ := getParserType(t); parserType != ParserObject {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewInputObject must have parser type ParserObject, received %s",
@@ -36,7 +36,10 @@ func NewInputObject(t reflect.Type, builder *SchemaBuilder) *InputObject {
 
 	for i := 0; i < structFieldCount; i++ {
 		structField := t.Field(i)
-		field := NewArgument(t, structField, builder)
+		field, err := NewArgument(t, structField, builder)
+		if err != nil {
+			return nil, err
+		}
 
 		if field != nil {
 			inputObject.fields = append(inputObject.fields, field)
@@ -44,7 +47,7 @@ func NewInputObject(t reflect.Type, builder *SchemaBuilder) *InputObject {
 	}
 
 	builder.grootTypes[t] = inputObject
-	return inputObject
+	return inputObject, nil
 }
 
 func (object *InputObject) GraphQLType() graphql.Type {

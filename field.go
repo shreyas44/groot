@@ -34,7 +34,7 @@ type Field struct {
 	field             *graphql.Field
 }
 
-func NewField(structType reflect.Type, structField reflect.StructField, builder *SchemaBuilder) *Field {
+func NewField(structType reflect.Type, structField reflect.StructField, builder *SchemaBuilder) (*Field, error) {
 	if parserType, _ := getParserType(structType); parserType != ParserObject && parserType != ParserInterfaceDefinition {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewField must have parser type ParserObject or ParserInterfaceDefinition, received %s",
@@ -54,11 +54,11 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 	)
 
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if ignoreTag := structField.Tag.Get("groot_ignore"); ignoreTag == "true" {
-		return nil
+		return nil, nil
 	}
 
 	if nameTag := structField.Tag.Get("json"); nameTag != "" {
@@ -86,13 +86,16 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 		returnType := structField.Type
 		resolver, err = buildResolver(method, returnType, grootType)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		argsSignature := getResolverArgumentSignature(method)
 		for i, arg := range argsSignature {
 			if arg == fieldResolverArgInputArg {
-				arguments = getArguments(method.Func.Type().In(i+1), builder)
+				arguments, err = getArguments(method.Func.Type().In(i+1), builder)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -106,7 +109,7 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 		arguments:         arguments,
 	}
 
-	return field
+	return field, nil
 }
 
 func (field *Field) GraphQLField() *graphql.Field {
@@ -132,21 +135,33 @@ func (field *Field) GraphQLField() *graphql.Field {
 	return field.field
 }
 
-func getArguments(t reflect.Type, builder *SchemaBuilder) []*Argument {
+func getArguments(t reflect.Type, builder *SchemaBuilder) ([]*Argument, error) {
 	arguments := []*Argument{}
-	if t.Kind() != reflect.Struct {
-		panic("argument type must be a struct")
+	fieldCount := t.NumField()
+
+	if parserType, _ := getParserType(t); parserType != ParserObject && parserType != ParserInterfaceDefinition {
+		err := fmt.Errorf(
+			"groot: reflect.Type %s passed to getArguments must have parser type ParserObject or ParserInterfaceDefinition, received %s",
+			t.Name(),
+			parserType,
+		)
+
+		panic(err)
 	}
 
-	fieldCount := t.NumField()
 	for i := 0; i < fieldCount; i++ {
 		fieldType := t.Field(i)
-		if argument := NewArgument(t, fieldType, builder); argument != nil {
+		argument, err := NewArgument(t, fieldType, builder)
+		if err != nil {
+			return nil, err
+		}
+
+		if argument != nil {
 			arguments = append(arguments, argument)
 		}
 	}
 
-	return arguments
+	return arguments, nil
 }
 
 func validateFieldType(structType reflect.Type, structField reflect.StructField) error {
@@ -194,17 +209,18 @@ func getFieldGrootType(structType reflect.Type, structField reflect.StructField,
 		return NewNonNull(grootType), nil
 	}
 
+	var fieldType GrootType
 	switch parserType {
 	case ParserScalar, ParserCustomScalar:
-		return NewNonNull(NewScalar(structField.Type, builder)), nil
+		fieldType, err = NewScalar(structField.Type, builder)
 	case ParserObject:
-		return NewNonNull(NewObject(structField.Type, builder)), nil
+		fieldType, err = NewObject(structField.Type, builder)
 	case ParserInterface, ParserInterfaceDefinition:
-		return NewNonNull(NewInterface(structField.Type, builder)), nil
+		fieldType, err = NewInterface(structField.Type, builder)
 	case ParserUnion:
-		return NewNonNull(NewUnion(structField.Type, builder)), nil
+		fieldType, err = NewUnion(structField.Type, builder)
 	case ParserEnum:
-		return NewNonNull(NewEnum(structField.Type, builder)), nil
+		fieldType, err = NewEnum(structField.Type, builder)
 	case ParserList:
 		field := structField
 		field.Type = field.Type.Elem()
@@ -225,7 +241,11 @@ func getFieldGrootType(structType reflect.Type, structField reflect.StructField,
 		return GetNullable(item), nil
 	}
 
-	panic("invalid struct field type")
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNonNull(fieldType), nil
 }
 
 func getResolverArgumentSignature(method reflect.Method) []fieldResolverArgType {
