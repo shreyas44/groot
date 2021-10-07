@@ -39,7 +39,6 @@ Groot achieves all this while still being compatible with extensions built for `
 
 #### Features Not Supported but Coming Soon:
 
-- [Custom Scalars](https://github.com/shreyas44/groot/issues/3)
 - [Custom Directives](https://github.com/shreyas44/groot/issues/4)
 - [Subscriptions](https://github.com/shreyas44/groot/issues/1)
 - [Descriptions for type definitions](https://github.com/shreyas44/groot/issues/2)
