@@ -31,9 +31,8 @@ func NewUnion(t reflect.Type, builder *SchemaBuilder) *Union {
 	}
 
 	var (
-		name            = t.Name()
-		embeddedStructs = []reflect.Type{}
-		union           = &Union{
+		name  = t.Name()
+		union = &Union{
 			name:        name,
 			builder:     builder,
 			members:     []*Object{},
@@ -43,21 +42,18 @@ func NewUnion(t reflect.Type, builder *SchemaBuilder) *Union {
 
 	builder.grootTypes[t] = union
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Type.Kind() == reflect.Struct && field.Anonymous {
-			embeddedStructs = append(embeddedStructs, field.Type)
-		} else {
-			panic("union type cannot have any field other than embedded structs")
-		}
+	if err := validateUnionType(t); err != nil {
+		panic(err)
 	}
 
-	for _, embeddedStruct := range embeddedStructs {
+	for i := 0; i < t.NumField(); i++ {
+		embeddedStruct := t.Field(i).Type
+
 		if embeddedStruct == reflect.TypeOf(UnionType{}) {
 			continue
 		}
 
-		if object, ok := builder.grootTypes[embeddedStruct].(*Object); ok {
+		if object, ok := builder.getType(embeddedStruct).(*Object); ok {
 			union.members = append(union.members, object)
 		} else {
 			union.members = append(union.members, NewObject(embeddedStruct, builder))
@@ -103,7 +99,26 @@ func (union *Union) ReflectType() reflect.Type {
 	return union.reflectType
 }
 
-func validateUnionType() {}
+func validateUnionType(t reflect.Type) error {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		parserType, err := getParserType(field.Type)
+		if err != nil {
+			return err
+		}
+
+		if parserType != ParserObject && !field.Anonymous {
+			err := fmt.Errorf(
+				"got extra field %s on union %s, union types cannot contain any field other than embedded structs and groot.UnionType",
+				field.Name,
+				t.Name(),
+			)
+			panic(err)
+		}
+	}
+
+	return nil
+}
 
 func (union *Union) resolveValue(p graphql.ResolveTypeParams) reflect.Value {
 	for _, member := range union.members {

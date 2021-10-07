@@ -46,31 +46,12 @@ func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
 		name = t.Name()
 		name = name[0 : len(name)-len("Definition")+1]
 	} else {
+		if err := validateInterface(t); err != nil {
+			panic(err)
+		}
+
 		name = t.Name()
-
-		if t.NumMethod() != 1 {
-			panic("interface type can only have one method")
-		}
-
-		method := t.Method(0).Type
-
-		if method.NumIn() != 0 {
-			panic("interface type method must have no input arguments")
-		}
-
-		if method.NumOut() != 1 {
-			panic("interface type method must have one output argument")
-		}
-
-		interfaceDefinition = method.Out(0)
-
-		if interfaceDefinition.Kind() != reflect.Struct {
-			panic("interface type method must return a struct")
-		}
-
-		if !isInterfaceDefinition(interfaceDefinition) {
-			panic("interface type method must return a struct with groot.InterfaceType embedded")
-		}
+		interfaceDefinition = t.Method(0).Type.Out(0)
 	}
 
 	interface_.name = name
@@ -104,5 +85,50 @@ func (i *Interface) ReflectType() reflect.Type {
 	return i.reflectType
 }
 
-func validateInterface()           {}
-func validateInterfaceDefinition() {}
+func validateInterface(t reflect.Type) error {
+	if t.NumMethod() != 1 {
+		return fmt.Errorf(
+			"interface %s can have only one method",
+			t.Name(),
+		)
+	}
+
+	method := t.Method(0)
+
+	if method.Type.NumIn() != 0 {
+		return fmt.Errorf(
+			"method %s on interface %s should not have input arguments",
+			method.Name,
+			t.Name(),
+		)
+	}
+
+	if method.Type.NumOut() != 1 {
+		return fmt.Errorf(
+			"method %s on interface %s should return exactly one value",
+			method.Name,
+			t.Name(),
+		)
+	}
+
+	interfaceDefinition := method.Type.Out(0)
+
+	if parserType, _ := getParserType(interfaceDefinition); parserType != ParserInterfaceDefinition {
+		return fmt.Errorf(
+			"method %s on interface %s should return a struct with groot.InterfaceType embedded",
+			method.Name,
+			t.Name(),
+		)
+	}
+
+	if t.Name()+"Definition" != interfaceDefinition.Name() {
+		return fmt.Errorf(
+			"method %s on interface %s should return a struct named %sDefinition",
+			method.Name,
+			t.Name(),
+			t.Name(),
+		)
+	}
+
+	return nil
+}
