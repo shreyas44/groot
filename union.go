@@ -20,7 +20,7 @@ type Union struct {
 	reflectType reflect.Type
 }
 
-func NewUnion(t reflect.Type, builder *SchemaBuilder) *Union {
+func NewUnion(t reflect.Type, builder *SchemaBuilder) (*Union, error) {
 	if parserType, _ := getParserType(t); parserType != ParserUnion {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewUnion must have parser type ParserUnion, received %s",
@@ -43,7 +43,7 @@ func NewUnion(t reflect.Type, builder *SchemaBuilder) *Union {
 	builder.grootTypes[t] = union
 
 	if err := validateUnionType(t); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	for i := 0; i < t.NumField(); i++ {
@@ -56,11 +56,16 @@ func NewUnion(t reflect.Type, builder *SchemaBuilder) *Union {
 		if object, ok := builder.getType(embeddedStruct).(*Object); ok {
 			union.members = append(union.members, object)
 		} else {
-			union.members = append(union.members, NewObject(embeddedStruct, builder))
+			object, err := NewObject(embeddedStruct, builder)
+			if err != nil {
+				return nil, err
+			}
+
+			union.members = append(union.members, object)
 		}
 	}
 
-	return union
+	return union, nil
 }
 
 func (union *Union) GraphQLType() graphql.Type {
@@ -130,5 +135,6 @@ func (union *Union) resolveValue(p graphql.ResolveTypeParams) reflect.Value {
 		}
 	}
 
-	panic("could not resolve type")
+	firstValue := reflect.ValueOf(p.Value).FieldByName(union.members[0].reflectType.Name())
+	return firstValue
 }
