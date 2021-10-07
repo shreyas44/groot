@@ -143,12 +143,19 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 
 func NewScalar(t reflect.Type, builder *SchemaBuilder) *Scalar {
 	scalars := map[reflect.Type]*graphql.Scalar{
-		reflect.TypeOf(0):            graphql.Int,
+		reflect.TypeOf(IntID(0)):     graphql.ID,
+		reflect.TypeOf(StringID("")): graphql.ID,
+		reflect.TypeOf(int(0)):       graphql.Int,
+		reflect.TypeOf(int8(0)):      graphql.Int,
+		reflect.TypeOf(int16(0)):     graphql.Int,
+		reflect.TypeOf(int32(0)):     graphql.Int,
+		reflect.TypeOf(uint(0)):      graphql.Int,
+		reflect.TypeOf(uint8(0)):     graphql.Int,
+		reflect.TypeOf(uint16(0)):    graphql.Int,
+		reflect.TypeOf(float32(0.0)): graphql.Float,
+		reflect.TypeOf(float64(0.0)): graphql.Float,
 		reflect.TypeOf(""):           graphql.String,
 		reflect.TypeOf(false):        graphql.Boolean,
-		reflect.TypeOf(float32(0.0)): graphql.Float,
-		reflect.TypeOf(StringID("")): graphql.ID,
-		reflect.TypeOf(IntID(0)):     graphql.ID,
 	}
 
 	scalar := &Scalar{

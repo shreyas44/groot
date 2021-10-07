@@ -74,7 +74,11 @@ func parseArgumentType(t reflect.Type, builder *SchemaBuilder) graphql.Input {
 		return graphql.NewNonNull(parseArrayArgument(t, builder))
 	case reflect.Struct:
 		return graphql.NewNonNull(parseObjectArgument(t, builder))
-	case reflect.Int, reflect.Float32, reflect.String, reflect.Bool:
+	case
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Float32, reflect.Float64,
+		reflect.String, reflect.Bool:
 		return graphql.NewNonNull(parseScalarArgument(t, builder))
 	}
 

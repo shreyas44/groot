@@ -30,6 +30,7 @@ module.exports = {
         "type-definitions/interface",
         "type-definitions/union",
         "type-definitions/enum",
+        "type-definitions/scalar",
       ],
     },
     "comparison",

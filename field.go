@@ -27,7 +27,7 @@ type Field struct {
 	deprecationReason string
 	type_             GrootType
 	arguments         []*Argument
-	resolve           func(p graphql.ResolveParams) (interface{}, error)
+	resolve           graphql.FieldResolveFn
 	field             *graphql.Field
 }
 
@@ -130,7 +130,11 @@ func parseFieldType(t reflect.Type, builder *SchemaBuilder) GrootType {
 
 		return NewNonNull(NewObject(t, builder))
 
-	case reflect.Int, reflect.Bool, reflect.Float32:
+	case
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Float32, reflect.Float64,
+		reflect.Bool:
 		return NewNonNull(NewScalar(t, builder))
 
 	case reflect.String:
