@@ -18,52 +18,15 @@ type Interface struct {
 	reflectType reflect.Type
 }
 
-func (i *Interface) GraphQLType() graphql.Type {
-	if i.interface_ != nil {
-		for _, field := range i.fields {
-			i.interface_.AddFieldConfig(field.name, field.GraphQLField())
-		}
-
-		return i.interface_
-	}
-
-	fields := graphql.Fields{}
-	for _, field := range i.fields {
-		fields[field.name] = field.GraphQLField()
-	}
-
-	i.interface_ = graphql.NewInterface(graphql.InterfaceConfig{
-		Name:        i.name,
-		Description: i.description,
-		Fields:      fields,
-		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
-			valueType := reflect.TypeOf(p.Value)
-			return i.builder.grootTypes[valueType].GraphQLType().(*graphql.Object)
-		},
-	})
-
-	return i.interface_
-}
-
-func isInterfaceDefinition(t reflect.Type) bool {
-	interfaceType := reflect.TypeOf(InterfaceType{})
-
-	if t.Kind() != reflect.Struct {
-		return false
-	}
-
-	for i := 0; i < t.NumField(); i++ {
-		if field := t.Field(i); field.Anonymous && field.Type == interfaceType {
-			return true
-		}
-	}
-
-	return false
-}
-
-func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
-	if t.Kind() != reflect.Interface && t.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("must pass a reflect type of kind reflect.Interface or reflect.Struct, received %s", t.Kind()))
+func NewInterface(t reflect.Type, builder *SchemaBuilder) (*Interface, error) {
+	parserType, _ := getParserType(t)
+	if parserType != ParserInterface && parserType != ParserInterfaceDefinition {
+		err := fmt.Errorf(
+			"groot: reflect.Type %s passed to NewInterface must have parser type ParserInterface or ParserInterfaceDefinition, received %s",
+			t.Name(),
+			parserType,
+		)
+		panic(err)
 	}
 
 	var (
@@ -75,43 +38,102 @@ func NewInterface(t reflect.Type, builder *SchemaBuilder) *Interface {
 		}
 	)
 
-	if t.Kind() == reflect.Struct {
+	builder.grootTypes[t] = interface_
+	builder.grootTypes[interfaceDefinition] = interface_
+
+	if parserType == ParserInterfaceDefinition {
 		interfaceDefinition = t
 		name = t.Name()
 		name = name[0 : len(name)-len("Definition")+1]
-	} else if t.Kind() == reflect.Interface {
+	} else {
+		if err := validateInterface(t); err != nil {
+			return nil, err
+		}
+
 		name = t.Name()
+		interfaceDefinition = t.Method(0).Type.Out(0)
+	}
 
-		if t.NumMethod() != 1 {
-			panic("interface type can only have one method")
-		}
-
-		method := t.Method(0).Type
-
-		if method.NumIn() != 0 {
-			panic("interface type method must have no input arguments")
-		}
-
-		if method.NumOut() != 1 {
-			panic("interface type method must have one output argument")
-		}
-
-		interfaceDefinition = method.Out(0)
-
-		if interfaceDefinition.Kind() != reflect.Struct {
-			panic("interface type method must return a struct")
-		}
-
-		if !isInterfaceDefinition(interfaceDefinition) {
-			panic("interface type method must return a struct with groot.InterfaceType embedded")
-		}
+	fields, err := getFields(interfaceDefinition, builder)
+	if err != nil {
+		return nil, err
 	}
 
 	interface_.name = name
-	builder.grootTypes[t] = interface_
-	builder.grootTypes[interfaceDefinition] = interface_
-	builder.types[interface_.name] = interface_.GraphQLType()
-	interface_.fields = getFields(interfaceDefinition, builder)
-	interface_.GraphQLType()
-	return interface_
+	interface_.fields = fields
+	return interface_, nil
+}
+
+func (i *Interface) GraphQLType() graphql.Type {
+	if i.interface_ != nil {
+		return i.interface_
+	}
+
+	i.interface_ = graphql.NewInterface(graphql.InterfaceConfig{
+		Name:        i.name,
+		Description: i.description,
+		Fields:      graphql.Fields{},
+		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
+			valueType := reflect.TypeOf(p.Value)
+			return i.builder.grootTypes[valueType].GraphQLType().(*graphql.Object)
+		},
+	})
+
+	for _, field := range i.fields {
+		i.interface_.AddFieldConfig(field.name, field.GraphQLField())
+	}
+
+	return i.interface_
+}
+
+func (i *Interface) ReflectType() reflect.Type {
+	return i.reflectType
+}
+
+func validateInterface(t reflect.Type) error {
+	if t.NumMethod() != 1 {
+		return fmt.Errorf(
+			"interface %s can have only one method",
+			t.Name(),
+		)
+	}
+
+	method := t.Method(0)
+
+	if method.Type.NumIn() != 0 {
+		return fmt.Errorf(
+			"method %s on interface %s should not have input arguments",
+			method.Name,
+			t.Name(),
+		)
+	}
+
+	if method.Type.NumOut() != 1 {
+		return fmt.Errorf(
+			"method %s on interface %s should return exactly one value",
+			method.Name,
+			t.Name(),
+		)
+	}
+
+	interfaceDefinition := method.Type.Out(0)
+
+	if parserType, _ := getParserType(interfaceDefinition); parserType != ParserInterfaceDefinition {
+		return fmt.Errorf(
+			"method %s on interface %s should return a struct with groot.InterfaceType embedded",
+			method.Name,
+			t.Name(),
+		)
+	}
+
+	if t.Name()+"Definition" != interfaceDefinition.Name() {
+		return fmt.Errorf(
+			"method %s on interface %s should return a struct named %sDefinition",
+			method.Name,
+			t.Name(),
+			t.Name(),
+		)
+	}
+
+	return nil
 }
