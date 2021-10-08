@@ -116,7 +116,7 @@ func getArgumentGrootType(structType reflect.Type, structField reflect.StructFie
 	case ParserScalar, ParserCustomScalar:
 		argType, err = NewScalar(structField.Type, builder)
 	case ParserObject:
-		argType, err = NewObject(structField.Type, builder)
+		argType, err = NewInputObject(structField.Type, builder)
 	case ParserList:
 		field := structField
 		field.Type = field.Type.Elem()
