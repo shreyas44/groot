@@ -86,7 +86,6 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 	// subscription resolver
 	if structType.Name() == "Subscription" {
 		method, _ := structType.MethodByName(fmt.Sprintf("Subscribe%s", structField.Name))
-		fmt.Println(method, structField)
 		returnType := reflect.ChanOf(reflect.RecvDir, structField.Type)
 		subscribe, err = buildSubscriptionResolver(method, returnType, grootType)
 		if err != nil {
