@@ -33,6 +33,7 @@ module.exports = {
         "type-definitions/scalar",
       ],
     },
+    "subscriptions",
     "comparison",
     "composition",
     "relay",
