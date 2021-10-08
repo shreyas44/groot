@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
 type Object struct {
@@ -19,41 +20,37 @@ type Object struct {
 	reflectType reflect.Type
 }
 
-func NewObject(t reflect.Type, builder *SchemaBuilder) (*Object, error) {
-	if parserType, _ := getParserType(t); parserType != ParserObject {
+func NewObject(t *parser.Type, builder *SchemaBuilder) (*Object, error) {
+	if t.Kind() != parser.Object {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewObject must have parser type ParserObject, received %s",
 			t.Name(),
-			parserType,
+			t.Kind(),
 		)
 		panic(err)
 	}
 
 	var (
-		structName       = t.Name()
-		structFieldCount = t.NumField()
-		object           = &Object{
+		structName = t.Name()
+		object     = &Object{
 			name:        structName,
 			interfaces:  []*Interface{},
 			builder:     builder,
-			reflectType: t,
+			reflectType: t.Type,
 		}
 	)
 
-	builder.grootTypes[t] = object
+	builder.addType(t, object)
 
-	for i := 0; i < structFieldCount; i++ {
-		if field := t.Field(i); field.Anonymous && isInterfaceDefinition(field.Type) {
-			if interface_, ok := builder.grootTypes[field.Type].(*Interface); ok {
-				object.interfaces = append(object.interfaces, interface_)
-			} else {
-				interface_, err := NewInterface(field.Type, builder)
-				if err != nil {
-					return nil, err
-				}
-
-				object.interfaces = append(object.interfaces, interface_)
+	if t.Kind() == parser.Object {
+		for _, interfaceType := range t.Interfaces() {
+			interface_, err := getOrCreateType(interfaceType, builder)
+			if err != nil {
+				return nil, err
 			}
+
+			interface_ = GetNullable(interface_)
+			object.interfaces = append(object.interfaces, interface_.(*Interface))
 		}
 	}
 
@@ -94,31 +91,16 @@ func (object *Object) ReflectType() reflect.Type {
 	return object.reflectType
 }
 
-func getFields(t reflect.Type, builder *SchemaBuilder) ([]*Field, error) {
+func getFields(t *parser.Type, builder *SchemaBuilder) ([]*Field, error) {
 	fields := []*Field{}
-	fieldCount := t.NumField()
 
-	for i := 0; i < fieldCount; i++ {
-		structField := t.Field(i)
-
-		if structField.Anonymous {
-			embeddedFields, err := getFields(structField.Type, builder)
-			if err != nil {
-				return nil, err
-			}
-
-			fields = append(fields, embeddedFields...)
-			continue
-		}
-
-		field, err := NewField(t, structField, builder)
+	for _, parserField := range t.Fields() {
+		field, err := NewField(parserField, builder)
 		if err != nil {
 			return nil, err
 		}
 
-		if field != nil {
-			fields = append(fields, field)
-		}
+		fields = append(fields, field)
 	}
 
 	return fields, nil

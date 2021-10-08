@@ -5,9 +5,10 @@ import (
 	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
-type InterfaceType struct{}
+type InterfaceType = parser.InterfaceType
 
 type Interface struct {
 	name        string
@@ -18,40 +19,31 @@ type Interface struct {
 	reflectType reflect.Type
 }
 
-func NewInterface(t reflect.Type, builder *SchemaBuilder) (*Interface, error) {
-	parserType, _ := getParserType(t)
-	if parserType != ParserInterface && parserType != ParserInterfaceDefinition {
+func NewInterface(t *parser.Type, builder *SchemaBuilder) (*Interface, error) {
+	if t.Kind() != parser.InterfaceDefinition && t.Kind() != parser.Interface {
 		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewInterface must have parser type ParserInterface or ParserInterfaceDefinition, received %s",
+			"groot: reflect.Type %s passed to NewInterface must have parser type ParserInterfaceDefinition or ParserInterface, received %s",
 			t.Name(),
-			parserType,
+			t.Kind(),
 		)
 		panic(err)
 	}
 
-	var (
-		interfaceDefinition reflect.Type
-		name                string
-		interface_          = &Interface{
-			builder:     builder,
-			reflectType: t,
-		}
-	)
+	var interfaceDefinition *parser.Type
 
-	builder.grootTypes[t] = interface_
-	builder.grootTypes[interfaceDefinition] = interface_
+	interface_ := &Interface{
+		name:        t.Name(),
+		builder:     builder,
+		reflectType: t.Type,
+	}
+	builder.addType(t, interface_)
 
-	if parserType == ParserInterfaceDefinition {
-		interfaceDefinition = t
-		name = t.Name()
-		name = name[0 : len(name)-len("Definition")+1]
+	if t.Kind() == parser.Interface {
+		interfaceDefinition = t.Definition()
 	} else {
-		if err := validateInterface(t); err != nil {
-			return nil, err
-		}
-
-		name = t.Name()
-		interfaceDefinition = t.Method(0).Type.Out(0)
+		name := interface_.name
+		interface_.name = name[0 : len(name)-len("Definition")]
+		interfaceDefinition = t
 	}
 
 	fields, err := getFields(interfaceDefinition, builder)
@@ -59,7 +51,6 @@ func NewInterface(t reflect.Type, builder *SchemaBuilder) (*Interface, error) {
 		return nil, err
 	}
 
-	interface_.name = name
 	interface_.fields = fields
 	return interface_, nil
 }
@@ -75,7 +66,7 @@ func (i *Interface) GraphQLType() graphql.Type {
 		Fields:      graphql.Fields{},
 		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
 			valueType := reflect.TypeOf(p.Value)
-			return i.builder.grootTypes[valueType].GraphQLType().(*graphql.Object)
+			return i.builder.reflectGrootMap[valueType].GraphQLType().(*graphql.Object)
 		},
 	})
 
@@ -88,52 +79,4 @@ func (i *Interface) GraphQLType() graphql.Type {
 
 func (i *Interface) ReflectType() reflect.Type {
 	return i.reflectType
-}
-
-func validateInterface(t reflect.Type) error {
-	if t.NumMethod() != 1 {
-		return fmt.Errorf(
-			"interface %s can have only one method",
-			t.Name(),
-		)
-	}
-
-	method := t.Method(0)
-
-	if method.Type.NumIn() != 0 {
-		return fmt.Errorf(
-			"method %s on interface %s should not have input arguments",
-			method.Name,
-			t.Name(),
-		)
-	}
-
-	if method.Type.NumOut() != 1 {
-		return fmt.Errorf(
-			"method %s on interface %s should return exactly one value",
-			method.Name,
-			t.Name(),
-		)
-	}
-
-	interfaceDefinition := method.Type.Out(0)
-
-	if parserType, _ := getParserType(interfaceDefinition); parserType != ParserInterfaceDefinition {
-		return fmt.Errorf(
-			"method %s on interface %s should return a struct with groot.InterfaceType embedded",
-			method.Name,
-			t.Name(),
-		)
-	}
-
-	if t.Name()+"Definition" != interfaceDefinition.Name() {
-		return fmt.Errorf(
-			"method %s on interface %s should return a struct named %sDefinition",
-			method.Name,
-			t.Name(),
-			t.Name(),
-		)
-	}
-
-	return nil
 }

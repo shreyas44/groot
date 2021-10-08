@@ -8,6 +8,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/language/ast"
+	"github.com/shreyas44/groot/parser"
 )
 
 type (
@@ -15,10 +16,7 @@ type (
 	IntID    int
 )
 
-type ScalarType interface {
-	json.Marshaler
-	json.Unmarshaler
-}
+type ScalarType = parser.ScalarType
 
 type Scalar struct {
 	name        string
@@ -27,13 +25,12 @@ type Scalar struct {
 	reflectType reflect.Type
 }
 
-func NewScalar(t reflect.Type, builder *SchemaBuilder) (*Scalar, error) {
-	parserType, _ := getParserType(t)
-	if parserType != ParserScalar && parserType != ParserCustomScalar {
+func NewScalar(t *parser.Type, builder *SchemaBuilder) (*Scalar, error) {
+	if t.Kind() != parser.Scalar && t.Kind() != parser.CustomScalar {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewScalar must have parser type ParserScalar, received %s",
 			t.Name(),
-			parserType,
+			t.Kind(),
 		)
 		panic(err)
 	}
@@ -56,16 +53,14 @@ func NewScalar(t reflect.Type, builder *SchemaBuilder) (*Scalar, error) {
 
 	scalar := &Scalar{
 		name:        t.Name(),
-		reflectType: t,
+		reflectType: t.Type,
 	}
 
-	if parserType == ParserScalar {
-		scalar.scalar = scalars[t]
-	} else if parserType == ParserCustomScalar {
-		t = reflect.PtrTo(t)
+	if t.Kind() == parser.Scalar {
+		scalar.scalar = scalars[t.Type]
 	}
 
-	builder.grootTypes[t] = scalar
+	builder.addType(t, scalar)
 	return scalar, nil
 }
 

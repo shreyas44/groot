@@ -2,9 +2,9 @@ package groot
 
 import (
 	"fmt"
-	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
 type Argument struct {
@@ -15,45 +15,30 @@ type Argument struct {
 	argument    *graphql.ArgumentConfig
 }
 
-func NewArgument(structType reflect.Type, structField reflect.StructField, builder *SchemaBuilder) (*Argument, error) {
-	if parserType, _ := getParserType(structType); parserType != ParserObject {
+func NewArgument(field *parser.ObjectField, builder *SchemaBuilder) (*Argument, error) {
+	object := field.Object()
+	if object.Kind() != parser.Object {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewArgument must have parser type ParserObject, received %s",
-			structType.Name(),
-			parserType,
+			object.Name(),
+			object.Kind(),
 		)
 		panic(err)
 	}
 
-	var (
-		name         string
-		description  string
-		defaultValue string
-	)
+	if err := validateArgumentType(field); err != nil {
+		return nil, err
+	}
 
-	grootType, err := getArgumentGrootType(structType, structField, builder)
+	grootType, err := getArgumentGrootType(field.Type(), builder)
 	if err != nil {
 		return nil, err
 	}
 
-	if ignoreTag := structField.Tag.Get("groot_ignore"); ignoreTag == "true" {
-		return nil, nil
-	}
-
-	if jsonTag := structField.Tag.Get("json"); jsonTag != "" {
-		name = jsonTag
-	} else {
-		name = structField.Name
-	}
-
-	if defaultTag := structField.Tag.Get("default"); defaultTag != "" {
-		defaultValue = defaultTag
-	}
-
 	argument := &Argument{
-		name:        name,
-		description: description,
-		default_:    defaultValue,
+		name:        field.JSONName(),
+		description: field.Description(),
+		default_:    field.DefaultValue(),
 		type_:       grootType,
 	}
 
@@ -74,71 +59,44 @@ func (field *Argument) GraphQLArgument() *graphql.ArgumentConfig {
 	return field.argument
 }
 
-func validateArgumentType(structType reflect.Type, structField reflect.StructField) error {
-	notSupportError := fmt.Errorf(
-		"argument type %s not supported for field %s on struct %s \nif you think this is a mistake please open an issue at github.com/shreyas44/groot",
-		structField.Type.Name(),
-		structField.Name,
-		structType.Name(),
-	)
-
-	parserType, err := getParserType(structField.Type)
-	if err != nil || parserType == ParserInterface || parserType == ParserUnion || parserType == ParserInterfaceDefinition {
-		return notSupportError
+func validateArgumentType(field *parser.ObjectField) error {
+	switch field.Type().Kind() {
+	case parser.Interface, parser.Union, parser.InterfaceDefinition:
+		return fmt.Errorf(
+			"argument type %s not supported for field %s on struct %s \nif you think this is a mistake please open an issue at github.com/shreyas44/groot",
+			field.StructField.Type.Name(),
+			field.Name,
+			field.Object().Name(),
+		)
 	}
 
 	return nil
 }
 
-func getArgumentGrootType(structType reflect.Type, structField reflect.StructField, builder *SchemaBuilder) (GrootType, error) {
-	if parserType, _ := getParserType(structType); parserType != ParserObject && parserType != ParserInterfaceDefinition {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to getArgumentGrootType must have parser type ParserObject or ParserInterfaceDefinition, received %s",
-			structType.Name(),
-			parserType,
-		)
-		panic(err)
-	}
-
-	parserType, _ := getParserType(structField.Type)
-	err := validateArgumentType(structType, structField)
-	if err != nil {
-		return nil, err
-	}
-
-	if grootType := builder.getType(structField.Type); grootType != nil {
+func getArgumentGrootType(t *parser.Type, builder *SchemaBuilder) (GrootType, error) {
+	if grootType, ok := builder.getType(t); ok {
 		return NewNonNull(grootType), nil
 	}
 
 	var argType GrootType
+	var err error
 
-	switch parserType {
-	case ParserScalar, ParserCustomScalar:
-		argType, err = NewScalar(structField.Type, builder)
-	case ParserObject:
-		argType, err = NewInputObject(structField.Type, builder)
-	case ParserList:
-		field := structField
-		field.Type = field.Type.Elem()
-		itemType, err := getArgumentGrootType(structType, field, builder)
-		if err != nil {
-			return nil, err
-		}
-
-		return NewNonNull(NewArray(itemType)), nil
-
-	case ParserNullable:
-		field := structField
-		field.Type = field.Type.Elem()
-		itemType, err := getArgumentGrootType(structType, field, builder)
+	switch t.Kind() {
+	case parser.Scalar, parser.CustomScalar:
+		argType, err = NewScalar(t, builder)
+	case parser.Object:
+		argType, err = NewInputObject(t, builder)
+	case parser.List:
+		argType, err = NewArray(t, builder)
+	case parser.Nullable:
+		itemType, err := getArgumentGrootType(t.Element(), builder)
 		if err != nil {
 			return nil, err
 		}
 
 		return GetNullable(itemType), nil
-
-	case ParserEnum:
-		argType, err = NewEnum(structField.Type, builder)
+	case parser.Enum:
+		argType, err = NewEnum(t, builder)
 	}
 
 	if err != nil {

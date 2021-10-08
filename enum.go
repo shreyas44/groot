@@ -5,11 +5,10 @@ import (
 	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
-type EnumType interface {
-	Values() []string
-}
+type EnumType = parser.EnumType
 
 type Enum struct {
 	name        string
@@ -18,25 +17,25 @@ type Enum struct {
 	reflectType reflect.Type
 }
 
-func NewEnum(t reflect.Type, builder *SchemaBuilder) (*Enum, error) {
-	if parserType, _ := getParserType(t); parserType != ParserEnum {
+func NewEnum(t *parser.Type, builder *SchemaBuilder) (*Enum, error) {
+	if t.Kind() != parser.Enum {
 		err := fmt.Sprintf(
 			"groot: reflect.Type %s passed to NewEnum must have parser type of ParserEnum, received %s",
 			t.Name(),
-			parserType,
+			t.Kind(),
 		)
 		panic(err)
 	}
 
 	name := t.Name()
-	enumType := reflect.New(t).Interface().(EnumType)
+	enumType := reflect.New(t.Type).Interface().(EnumType)
 	enum := &Enum{
 		name:        name,
 		values:      enumType.Values(),
-		reflectType: t,
+		reflectType: t.Type,
 	}
 
-	builder.grootTypes[t] = enum
+	builder.addType(t, enum)
 	return enum, nil
 }
 

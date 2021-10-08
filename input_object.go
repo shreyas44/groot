@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
 type InputObject struct {
@@ -15,12 +16,12 @@ type InputObject struct {
 	reflectType reflect.Type
 }
 
-func NewInputObject(t reflect.Type, builder *SchemaBuilder) (*InputObject, error) {
-	if parserType, _ := getParserType(t); parserType != ParserObject {
+func NewInputObject(t *parser.Type, builder *SchemaBuilder) (*InputObject, error) {
+	if t.Kind() != parser.Object {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewInputObject must have parser type ParserObject, received %s",
 			t.Name(),
-			parserType,
+			t.Kind(),
 		)
 		panic(err)
 	}
@@ -29,24 +30,21 @@ func NewInputObject(t reflect.Type, builder *SchemaBuilder) (*InputObject, error
 	inputObject := &InputObject{
 		name:        structName,
 		fields:      []*Argument{},
-		reflectType: t,
+		reflectType: t.Type,
 	}
 
-	structFieldCount := t.NumField()
-
-	for i := 0; i < structFieldCount; i++ {
-		structField := t.Field(i)
-		field, err := NewArgument(t, structField, builder)
+	for _, field := range t.Fields() {
+		arg, err := NewArgument(field, builder)
 		if err != nil {
 			return nil, err
 		}
 
-		if field != nil {
-			inputObject.fields = append(inputObject.fields, field)
+		if arg != nil {
+			inputObject.fields = append(inputObject.fields, arg)
 		}
 	}
 
-	builder.grootTypes[t] = inputObject
+	builder.addType(t, inputObject)
 	return inputObject, nil
 }
 

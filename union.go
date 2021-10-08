@@ -5,9 +5,10 @@ import (
 	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
-type UnionType struct{}
+type UnionType = parser.UnionType
 
 type Union struct {
 	name        string
@@ -20,12 +21,12 @@ type Union struct {
 	reflectType reflect.Type
 }
 
-func NewUnion(t reflect.Type, builder *SchemaBuilder) (*Union, error) {
-	if parserType, _ := getParserType(t); parserType != ParserUnion {
+func NewUnion(t *parser.Type, builder *SchemaBuilder) (*Union, error) {
+	if t.Kind() != parser.Union {
 		err := fmt.Errorf(
 			"groot: reflect.Type %s passed to NewUnion must have parser type ParserUnion, received %s",
 			t.Name(),
-			parserType,
+			t.Kind(),
 		)
 		panic(err)
 	}
@@ -36,33 +37,19 @@ func NewUnion(t reflect.Type, builder *SchemaBuilder) (*Union, error) {
 			name:        name,
 			builder:     builder,
 			members:     []*Object{},
-			reflectType: t,
+			reflectType: t.Type,
 		}
 	)
 
-	builder.grootTypes[t] = union
+	builder.addType(t, union)
 
-	if err := validateUnionType(t); err != nil {
-		return nil, err
-	}
-
-	for i := 0; i < t.NumField(); i++ {
-		embeddedStruct := t.Field(i).Type
-
-		if embeddedStruct == reflect.TypeOf(UnionType{}) {
-			continue
+	for _, member := range t.Members() {
+		obj, err := getOrCreateType(member, builder)
+		if err != nil {
+			return nil, err
 		}
 
-		if object, ok := builder.getType(embeddedStruct).(*Object); ok {
-			union.members = append(union.members, object)
-		} else {
-			object, err := NewObject(embeddedStruct, builder)
-			if err != nil {
-				return nil, err
-			}
-
-			union.members = append(union.members, object)
-		}
+		union.members = append(union.members, GetNullable(obj).(*Object))
 	}
 
 	return union, nil
@@ -86,8 +73,9 @@ func (union *Union) GraphQLType() graphql.Type {
 		Description: union.description,
 		Types:       placeholderTypes,
 		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
+			// TODO
 			valueType := reflect.TypeOf(p.Value)
-			return union.builder.grootTypes[valueType].GraphQLType().(*graphql.Object)
+			return union.builder.reflectGrootMap[valueType].GraphQLType().(*graphql.Object)
 		},
 	})
 
@@ -102,27 +90,6 @@ func (union *Union) GraphQLType() graphql.Type {
 
 func (union *Union) ReflectType() reflect.Type {
 	return union.reflectType
-}
-
-func validateUnionType(t reflect.Type) error {
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		parserType, err := getParserType(field.Type)
-		if err != nil {
-			return err
-		}
-
-		if parserType != ParserObject && !field.Anonymous {
-			err := fmt.Errorf(
-				"got extra field %s on union %s, union types cannot contain any field other than embedded structs and groot.UnionType",
-				field.Name,
-				t.Name(),
-			)
-			panic(err)
-		}
-	}
-
-	return nil
 }
 
 func (union *Union) resolveValue(p graphql.ResolveTypeParams) reflect.Value {
