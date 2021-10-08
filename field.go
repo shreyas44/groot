@@ -31,6 +31,7 @@ type Field struct {
 	type_             GrootType
 	arguments         []*Argument
 	resolve           graphql.FieldResolveFn
+	subscribe         graphql.FieldResolveFn
 	field             *graphql.Field
 }
 
@@ -50,9 +51,10 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 		depracationReason string
 		arguments         []*Argument
 		resolver          graphql.FieldResolveFn
-		grootType, err    = getFieldGrootType(structType, structField, builder)
+		subscribe         graphql.FieldResolveFn = nil
 	)
 
+	grootType, err := getFieldGrootType(structType, structField, builder)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +83,32 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 		return value.Interface(), nil
 	}
 
-	// custom resolver
-	if method, exists := structType.MethodByName(fmt.Sprintf("Resolve%s", structField.Name)); exists {
+	// subscription resolver
+	if structType.Name() == "Subscription" {
+		method, _ := structType.MethodByName(fmt.Sprintf("Subscribe%s", structField.Name))
+		fmt.Println(method, structField)
+		returnType := reflect.ChanOf(reflect.RecvDir, structField.Type)
+		subscribe, err = buildSubscriptionResolver(method, returnType, grootType)
+		if err != nil {
+			return nil, err
+		}
+
+		resolver = func(p graphql.ResolveParams) (interface{}, error) {
+			return p.Source, nil
+		}
+
+		argsSignature := getResolverArgumentSignature(method)
+		for i, arg := range argsSignature {
+			if arg == fieldResolverArgInputArg {
+				arguments, err = getArguments(method.Func.Type().In(i+1), builder)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	} else if method, exists := structType.MethodByName(fmt.Sprintf("Resolve%s", structField.Name)); exists {
+		// custom resolver
+
 		returnType := structField.Type
 		resolver, err = buildResolver(method, returnType, grootType)
 		if err != nil {
@@ -105,6 +131,7 @@ func NewField(structType reflect.Type, structField reflect.StructField, builder 
 		description:       description,
 		type_:             grootType,
 		resolve:           resolver,
+		subscribe:         subscribe,
 		deprecationReason: depracationReason,
 		arguments:         arguments,
 	}
@@ -130,6 +157,10 @@ func (field *Field) GraphQLField() *graphql.Field {
 		Resolve:           field.resolve,
 		DeprecationReason: field.deprecationReason,
 		Args:              args,
+	}
+
+	if field.subscribe != nil {
+		field.field.Subscribe = field.subscribe
 	}
 
 	return field.field
@@ -350,12 +381,9 @@ func validateFieldResolver(method reflect.Method, returnType reflect.Type) error
 	return nil
 }
 
+// TODO: use groot type to get return type, we can construct a new type from it
 func buildResolver(method reflect.Method, returnType reflect.Type, grootType GrootType) (graphql.FieldResolveFn, error) {
-	var (
-		funcType      = method.Func.Type()
-		structType    = funcType.In(0)
-		argsSignature = getResolverArgumentSignature(method)
-	)
+	argsSignature := getResolverArgumentSignature(method)
 
 	if err := validateFieldResolver(method, returnType); err != nil {
 		return nil, err
@@ -363,36 +391,13 @@ func buildResolver(method reflect.Method, returnType reflect.Type, grootType Gro
 
 	union, isUnion := GetNullable(grootType).(*Union)
 	return func(p graphql.ResolveParams) (interface{}, error) {
-		var source reflect.Value
-		// if it's a map, it's a root query
-		if _, isMap := p.Source.(map[string]interface{}); isMap {
-			source = reflect.Indirect(reflect.New(method.Type.In(0)))
-		} else {
-			source = reflect.ValueOf(p.Source).Convert(structType)
-		}
-
-		args := []reflect.Value{source}
-
-		for _, arg := range argsSignature {
-			switch arg {
-			case fieldResolverArgInputArg:
-				structInterface := reflect.New(funcType.In(1)).Interface()
-				jsonBytes, err := json.Marshal(p.Args)
-				if err != nil {
-					return nil, err
-				}
-
-				json.Unmarshal(jsonBytes, &structInterface)
-				args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
-			case fieldResolverArgContext:
-				args = append(args, reflect.ValueOf(p.Context))
-			case fieldResolverArgInfo:
-				args = append(args, reflect.ValueOf(p.Info))
-			}
+		args, err := makeResolverArgs(method, argsSignature, p)
+		if err != nil {
+			return nil, err
 		}
 
 		response := method.Func.Call(args)
-		value, err := response[0], response[1]
+		value, resErr := response[0], response[1]
 
 		if isUnion {
 			p := graphql.ResolveTypeParams{
@@ -404,10 +409,110 @@ func buildResolver(method reflect.Method, returnType reflect.Type, grootType Gro
 			value = union.resolveValue(p)
 		}
 
-		if err.IsNil() {
+		if resErr.IsNil() {
 			return value.Interface(), nil
 		}
 
-		return value.Interface(), err.Interface().(error)
+		return value.Interface(), resErr.Interface().(error)
 	}, nil
+}
+
+// TODO: use groot type to get return type, we can construct a new type from it
+func buildSubscriptionResolver(method reflect.Method, returnType reflect.Type, grootType GrootType) (graphql.FieldResolveFn, error) {
+	argsSignature := getResolverArgumentSignature(method)
+
+	if err := validateFieldResolver(method, returnType); err != nil {
+		return nil, err
+	}
+
+	union, isUnion := GetNullable(grootType).(*Union)
+	return func(p graphql.ResolveParams) (interface{}, error) {
+		args, err := makeResolverArgs(method, argsSignature, p)
+		if err != nil {
+			return nil, err
+		}
+
+		response := method.Func.Call(args)
+		resCh, resErr := response[0], response[1]
+
+		if !resErr.IsNil() {
+			return nil, resErr.Interface().(error)
+		}
+
+		ch := make(chan interface{})
+		valueCh := make(chan reflect.Value)
+
+		go func() {
+			for {
+				value, ok := resCh.Recv()
+				if !ok {
+					close(valueCh)
+					return
+				}
+
+				select {
+				case <-p.Context.Done():
+					close(valueCh)
+					return
+				default:
+					valueCh <- value
+				}
+			}
+		}()
+
+		go func() {
+			for value := range valueCh {
+				if isUnion {
+					p := graphql.ResolveTypeParams{
+						Value:   value.Interface(),
+						Info:    p.Info,
+						Context: p.Context,
+					}
+
+					value = union.resolveValue(p)
+				}
+
+				ch <- value.Interface()
+			}
+
+			close(ch)
+		}()
+
+		return ch, nil
+	}, nil
+}
+
+func makeResolverArgs(method reflect.Method, argsSignature []fieldResolverArgType, p graphql.ResolveParams) ([]reflect.Value, error) {
+	var (
+		funcType   = method.Func.Type()
+		structType = funcType.In(0)
+		args       = []reflect.Value{}
+	)
+
+	// if it's a map, it's a root query
+	if _, isMap := p.Source.(map[string]interface{}); isMap {
+		args = append(args, reflect.Indirect(reflect.New(method.Type.In(0))))
+	} else {
+		args = append(args, reflect.ValueOf(p.Source).Convert(structType))
+	}
+
+	for _, arg := range argsSignature {
+		switch arg {
+		case fieldResolverArgInputArg:
+			structInterface := reflect.New(funcType.In(1)).Interface()
+			jsonBytes, err := json.Marshal(p.Args)
+			if err != nil {
+				return nil, err
+			}
+
+			json.Unmarshal(jsonBytes, &structInterface)
+			args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
+		case fieldResolverArgContext:
+			args = append(args, reflect.ValueOf(p.Context))
+		case fieldResolverArgInfo:
+			args = append(args, reflect.ValueOf(p.Info))
+		}
+	}
+
+	return args, nil
 }

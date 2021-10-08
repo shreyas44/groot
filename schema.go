@@ -12,10 +12,11 @@ type GrootType interface {
 }
 
 type SchemaConfig struct {
-	Query      reflect.Type
-	Mutation   reflect.Type
-	Types      []reflect.Type
-	Extensions []graphql.Extension
+	Query        reflect.Type
+	Mutation     reflect.Type
+	Subscription reflect.Type
+	Types        []reflect.Type
+	Extensions   []graphql.Extension
 }
 
 type SchemaBuilder struct {
@@ -51,6 +52,15 @@ func NewSchema(config SchemaConfig) (graphql.Schema, error) {
 		}
 
 		schemaConfig.Mutation = mutation
+	}
+
+	if config.Subscription != nil {
+		subscription, err := builder.parseAndGetRoot(config.Subscription)
+		if err != nil {
+			return graphql.Schema{}, err
+		}
+
+		schemaConfig.Subscription = subscription
 	}
 
 	for _, t := range config.Types {
