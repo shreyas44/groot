@@ -2,81 +2,45 @@ package groot
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/language/ast"
+	"github.com/shreyas44/groot/parser"
 )
+
+type ScalarType = parser.ScalarType
 
 type (
 	StringID string
 	IntID    int
 )
 
-type ScalarType interface {
-	json.Marshaler
-	json.Unmarshaler
+var builtinScalars = map[reflect.Type]*graphql.Scalar{
+	reflect.TypeOf(IntID(0)):     graphql.ID,
+	reflect.TypeOf(StringID("")): graphql.ID,
+	reflect.TypeOf(int(0)):       graphql.Int,
+	reflect.TypeOf(int8(0)):      graphql.Int,
+	reflect.TypeOf(int16(0)):     graphql.Int,
+	reflect.TypeOf(int32(0)):     graphql.Int,
+	reflect.TypeOf(uint(0)):      graphql.Int,
+	reflect.TypeOf(uint8(0)):     graphql.Int,
+	reflect.TypeOf(uint16(0)):    graphql.Int,
+	reflect.TypeOf(float32(0.0)): graphql.Float,
+	reflect.TypeOf(float64(0.0)): graphql.Float,
+	reflect.TypeOf(""):           graphql.String,
+	reflect.TypeOf(false):        graphql.Boolean,
 }
 
-type Scalar struct {
-	name        string
-	description string
-	scalar      *graphql.Scalar
-	reflectType reflect.Type
-}
-
-func NewScalar(t reflect.Type, builder *SchemaBuilder) (*Scalar, error) {
-	parserType, _ := getParserType(t)
-	if parserType != ParserScalar && parserType != ParserCustomScalar {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewScalar must have parser type ParserScalar, received %s",
-			t.Name(),
-			parserType,
-		)
-		panic(err)
+func NewScalar(parserScalar *parser.Scalar, builder *SchemaBuilder) *graphql.Scalar {
+	if graphqlScalar, ok := builtinScalars[parserScalar.ReflectType()]; ok {
+		return graphqlScalar
 	}
 
-	scalars := map[reflect.Type]*graphql.Scalar{
-		reflect.TypeOf(IntID(0)):     graphql.ID,
-		reflect.TypeOf(StringID("")): graphql.ID,
-		reflect.TypeOf(int(0)):       graphql.Int,
-		reflect.TypeOf(int8(0)):      graphql.Int,
-		reflect.TypeOf(int16(0)):     graphql.Int,
-		reflect.TypeOf(int32(0)):     graphql.Int,
-		reflect.TypeOf(uint(0)):      graphql.Int,
-		reflect.TypeOf(uint8(0)):     graphql.Int,
-		reflect.TypeOf(uint16(0)):    graphql.Int,
-		reflect.TypeOf(float32(0.0)): graphql.Float,
-		reflect.TypeOf(float64(0.0)): graphql.Float,
-		reflect.TypeOf(""):           graphql.String,
-		reflect.TypeOf(false):        graphql.Boolean,
-	}
-
-	scalar := &Scalar{
-		name:        t.Name(),
-		reflectType: t,
-	}
-
-	if parserType == ParserScalar {
-		scalar.scalar = scalars[t]
-	} else if parserType == ParserCustomScalar {
-		t = reflect.PtrTo(t)
-	}
-
-	builder.grootTypes[t] = scalar
-	return scalar, nil
-}
-
-func (scalar *Scalar) GraphQLType() graphql.Type {
-	if scalar.scalar != nil {
-		return scalar.scalar
-	}
-
-	scalar.scalar = graphql.NewScalar(graphql.ScalarConfig{
-		Name:        scalar.name,
-		Description: scalar.description,
+	// TODO: description
+	scalar := graphql.NewScalar(graphql.ScalarConfig{
+		Name: parserScalar.Name(),
 		Serialize: func(value interface{}) interface{} {
 			var v ScalarType
 			if reflect.TypeOf(value).Kind() != reflect.Ptr {
@@ -95,7 +59,7 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 				panic(err)
 			}
 
-			v := reflect.New(scalar.reflectType).Interface().(ScalarType)
+			v := reflect.New(parserScalar.ReflectType()).Interface().(ScalarType)
 			err = v.UnmarshalJSON(jsonRepr)
 			if err != nil {
 				panic(err)
@@ -109,7 +73,7 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 				panic(err)
 			}
 
-			v := reflect.New(scalar.reflectType).Interface().(ScalarType)
+			v := reflect.New(parserScalar.ReflectType()).Interface().(ScalarType)
 			err = v.UnmarshalJSON(jsonRepr)
 			if err != nil {
 				panic(err)
@@ -119,11 +83,8 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 		},
 	})
 
-	return scalar.scalar
-}
-
-func (scalar *Scalar) ReflectType() reflect.Type {
-	return scalar.reflectType
+	builder.addType(parserScalar, scalar)
+	return scalar
 }
 
 func astValueToGoValue(valueAST ast.Value) (interface{}, error) {

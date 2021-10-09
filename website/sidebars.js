@@ -17,7 +17,6 @@ module.exports = {
   docs: [
     "introduction",
     "getting-started",
-    "context",
     {
       type: "category",
       label: "Type Definitions",
@@ -34,6 +33,7 @@ module.exports = {
       ],
     },
     "subscriptions",
+    "context",
     "comparison",
     "composition",
     "relay",

@@ -1,114 +1,85 @@
 package groot
 
 import (
-	"fmt"
 	"reflect"
+
+	"github.com/shreyas44/groot/parser"
 )
 
-type ParserType int
-
-const (
-	ParserScalar ParserType = iota
-	ParserCustomScalar
-	ParserObject
-	ParserInterface
-	ParserInterfaceDefinition
-	ParserUnion
-	ParserEnum
-	ParserList
-	ParserNullable
-	ParserInvalidType
-)
-
-func (t ParserType) String() string {
-	stringMap := map[ParserType]string{
-		ParserScalar:              "ParserScalar",
-		ParserCustomScalar:        "ParserCustomScalar",
-		ParserObject:              "ParserObject",
-		ParserInterface:           "ParserInterface",
-		ParserInterfaceDefinition: "ParserInterfaceDefinition",
-		ParserUnion:               "ParserUnion",
-		ParserEnum:                "ParserEnum",
-		ParserList:                "ParserList",
-		ParserNullable:            "ParserNullable",
-		ParserInvalidType:         "ParserInvalidType",
-	}
-
-	return stringMap[t]
+func ParseObject(i interface{}) (*parser.Object, error) {
+	return parser.ParseObject(reflect.TypeOf(i))
 }
 
-func isTypeUnion(t reflect.Type) bool {
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Anonymous && field.Type == reflect.TypeOf(UnionType{}) {
-			return true
-		}
-	}
-
-	return false
+func ParseInputObject(i interface{}) (*parser.Input, error) {
+	return parser.ParseInputObject(reflect.TypeOf(i))
 }
 
-func isInterfaceDefinition(t reflect.Type) bool {
-	interfaceType := reflect.TypeOf(InterfaceType{})
-
-	if t.Kind() != reflect.Struct {
-		return false
-	}
-
-	for i := 0; i < t.NumField(); i++ {
-		if field := t.Field(i); field.Anonymous && field.Type == interfaceType {
-			return true
-		}
-	}
-
-	return false
+func ParseUnion(i interface{}) (*parser.Union, error) {
+	return parser.ParseUnion(reflect.TypeOf(i))
 }
 
-func getParserType(t reflect.Type) (ParserType, error) {
-	var (
-		enumType   = reflect.TypeOf((*EnumType)(nil)).Elem()
-		scalarType = reflect.TypeOf((*ScalarType)(nil)).Elem()
-	)
+func ParseInterface(i interface{}) (*parser.Interface, error) {
+	return parser.ParseInterface(reflect.TypeOf(i))
+}
 
-	if ptrT := reflect.PtrTo(t); ptrT.Implements(scalarType) {
-		return ParserCustomScalar, nil
+func ParseEnum(i interface{}) (*parser.Enum, error) {
+	return parser.ParseEnum(reflect.TypeOf(i))
+}
+
+func ParseScalar(i interface{}) (*parser.Scalar, error) {
+	return parser.ParseScalar(reflect.TypeOf(i))
+}
+
+func MustParseObject(i interface{}) *parser.Object {
+	object, err := ParseObject(i)
+	if err != nil {
+		panic(err)
 	}
 
-	switch t.Kind() {
-	case reflect.Ptr:
-		return ParserNullable, nil
+	return object
+}
 
-	case reflect.Slice:
-		return ParserList, nil
-
-	case reflect.Interface:
-		return ParserInterface, nil
-
-	case reflect.Struct:
-		if isTypeUnion(t) {
-			return ParserUnion, nil
-		}
-
-		if isInterfaceDefinition(t) {
-			return ParserInterfaceDefinition, nil
-		}
-
-		return ParserObject, nil
-
-	case
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
-		reflect.Uint, reflect.Uint8, reflect.Uint16,
-		reflect.Float32, reflect.Float64,
-		reflect.Bool:
-		return ParserScalar, nil
-
-	case reflect.String:
-		if t.Name() == "string" || !t.Implements(enumType) {
-			return ParserScalar, nil
-		}
-
-		return ParserEnum, nil
+func MustParseInputObject(i interface{}) *parser.Input {
+	inputObject, err := ParseInputObject(i)
+	if err != nil {
+		panic(err)
 	}
 
-	return ParserInvalidType, fmt.Errorf("couldn't parse type %s", t.Name())
+	return inputObject
+}
+
+func MustParseUnion(i interface{}) *parser.Union {
+	union, err := ParseUnion(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return union
+}
+
+func MustParseInterface(i interface{}) *parser.Interface {
+	interfaceType, err := ParseInterface(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return interfaceType
+}
+
+func MustParseScalar(i interface{}) *parser.Scalar {
+	scalar, err := ParseScalar(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return scalar
+}
+
+func MustParseEnum(i interface{}) *parser.Enum {
+	enum, err := ParseEnum(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return enum
 }

@@ -4,28 +4,40 @@ import (
 	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
-type GrootType interface {
-	GraphQLType() graphql.Type
-	ReflectType() reflect.Type
-}
-
 type SchemaConfig struct {
-	Query        reflect.Type
-	Mutation     reflect.Type
-	Subscription reflect.Type
-	Types        []reflect.Type
+	Query        *parser.Object
+	Mutation     *parser.Object
+	Subscription *parser.Object
+	Types        []parser.Type
 	Extensions   []graphql.Extension
 }
 
 type SchemaBuilder struct {
-	grootTypes map[reflect.Type]GrootType
+	graphqlTypes    map[parser.Type]graphql.Type
+	reflectGrootMap map[reflect.Type]graphql.Type
+}
+
+func (builder *SchemaBuilder) addType(t parser.Type, graphqlType graphql.Type) {
+	builder.graphqlTypes[t] = graphqlType
+	builder.reflectGrootMap[t.ReflectType()] = graphqlType
+}
+
+func (builder *SchemaBuilder) getType(t parser.Type) (graphql.Type, bool) {
+	graphqlType, ok := builder.graphqlTypes[t]
+	if ok {
+		return graphqlType, true
+	}
+
+	return nil, false
 }
 
 func NewSchemaBuilder() *SchemaBuilder {
 	return &SchemaBuilder{
-		grootTypes: map[reflect.Type]GrootType{},
+		graphqlTypes:    map[parser.Type]graphql.Type{},
+		reflectGrootMap: map[reflect.Type]graphql.Type{},
 	}
 }
 
@@ -37,71 +49,20 @@ func NewSchema(config SchemaConfig) (graphql.Schema, error) {
 	}
 
 	if config.Query != nil {
-		query, err := builder.parseAndGetRoot(config.Query)
-		if err != nil {
-			return graphql.Schema{}, err
-		}
-
-		schemaConfig.Query = query
+		schemaConfig.Query = NewObject(config.Query, builder)
 	}
 
 	if config.Mutation != nil {
-		mutation, err := builder.parseAndGetRoot(config.Mutation)
-		if err != nil {
-			return graphql.Schema{}, err
-		}
-
-		schemaConfig.Mutation = mutation
+		schemaConfig.Mutation = NewObject(config.Mutation, builder)
 	}
 
 	if config.Subscription != nil {
-		subscription, err := builder.parseAndGetRoot(config.Subscription)
-		if err != nil {
-			return graphql.Schema{}, err
-		}
-
-		schemaConfig.Subscription = subscription
+		schemaConfig.Subscription = NewObject(config.Subscription, builder)
 	}
 
 	for _, t := range config.Types {
-		if _, ok := builder.grootTypes[t]; !ok {
-			object, err := NewObject(t, builder)
-			if err != nil {
-				return graphql.Schema{}, err
-			}
-
-			schemaConfig.Types = append(schemaConfig.Types, object.GraphQLType())
-		}
+		schemaConfig.Types = append(schemaConfig.Types, getOrCreateType(t, builder))
 	}
 
 	return graphql.NewSchema(schemaConfig)
-}
-
-func (builder *SchemaBuilder) getType(t reflect.Type) GrootType {
-	parserType, err := getParserType(t)
-	if err != nil {
-		return nil
-	}
-
-	switch parserType {
-	case ParserCustomScalar:
-		t = reflect.PtrTo(t)
-	case ParserInterface:
-		t = t.Method(0).Type.Out(0)
-	}
-
-	if grootType, ok := builder.grootTypes[t]; ok {
-		return grootType
-	}
-
-	return nil
-}
-
-func (builder *SchemaBuilder) parseAndGetRoot(t reflect.Type) (*graphql.Object, error) {
-	root, err := NewObject(t, builder)
-	if err != nil {
-		return nil, err
-	}
-
-	return root.GraphQLType().(*graphql.Object), nil
 }

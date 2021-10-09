@@ -194,7 +194,7 @@ func (query Query) ResolvePost(args IdArgs) (Post, error) {
 
 func main() {
 	schema := groot.NewSchema(groot.SchemaConfig{
-		Query: reflect.TypeOf(Query{})
+		Query: groot.MustParseObject(Query{})
 	})
 }
 ```
