@@ -1,35 +1,17 @@
 package groot
 
 import (
-	"reflect"
-
 	"github.com/graphql-go/graphql"
 )
 
-type NonNull struct {
-	value GrootType
-}
-
-func NewNonNull(value GrootType) *NonNull {
-	if _, ok := value.(*NonNull); ok {
-		return value.(*NonNull)
+func NewNonNull(t graphql.Type) *graphql.NonNull {
+	if _, ok := t.(*graphql.NonNull); ok {
+		return t.(*graphql.NonNull)
 	}
 
-	return &NonNull{value: value}
+	return graphql.NewNonNull(t)
 }
 
-func (n *NonNull) GraphQLType() graphql.Type {
-	return graphql.NewNonNull(n.value.GraphQLType())
-}
-
-func (n *NonNull) ReflectType() reflect.Type {
-	return n.value.ReflectType()
-}
-
-func GetNullable(t GrootType) GrootType {
-	if t, ok := t.(*NonNull); ok {
-		return t.value
-	}
-
-	return t
+func GetNullable(t graphql.Type) graphql.Nullable {
+	return graphql.GetNullable(t)
 }

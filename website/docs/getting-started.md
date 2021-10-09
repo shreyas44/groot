@@ -161,8 +161,8 @@ import (
 
 func main() {
 	schema := groot.NewSchema(groot.SchemaConfig{
-		Query:    reflect.TypeOf(Query{}),
-		Mutation: reflect.TypeOf(Mutation{}),
+		Query:    groot.MustParseObject(Query{}),
+		Mutation: groot.MustParseObject(Mutation{}),
 	})
 
 	h := handler.New(&handler.Config{

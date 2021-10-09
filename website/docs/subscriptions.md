@@ -55,8 +55,8 @@ func (s Subscription) SubscribeNotification(ctx context.Context) (<-chan Notific
 
 func main() {
 	schema, err := groot.NewSchema(groot.SchemaConfig{
-		Query:        reflect.TypeOf(Query{}),
-		Subscription: reflect.TypeOf(Subscription{}),
+		Query:        groot.MustParseObject(Query{}),
+		Subscription: groot.MustParseObject(Subscription{}),
 	})
 
 	if err != nil {
