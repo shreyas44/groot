@@ -23,8 +23,53 @@ const (
 
 type Resolver struct {
 	reflect.Method
-	field     *ObjectField
+	field     *Field
 	signature []ResolverArgType
+}
+
+func NewResolver(field *Field) (*Resolver, error) {
+	var (
+		methodName string
+		returnType = field.fieldType.ReflectType()
+		fieldName  = field.Name
+		object     = field.Object()
+	)
+
+	if object.Name() == "Subscription" {
+		methodName = fmt.Sprintf("Subscribe%s", fieldName)
+		returnType = reflect.ChanOf(reflect.RecvDir, returnType)
+	} else {
+		methodName = fmt.Sprintf("Resolve%s", fieldName)
+	}
+
+	method, hasMethod := object.MethodByName(methodName)
+	if !hasMethod {
+		if object.Name() == "Subscription" {
+			err := fmt.Errorf(
+				"subscription field %s must have a subscriber method with name %s defined",
+				fieldName,
+				methodName,
+			)
+
+			return nil, err
+		}
+
+		return nil, nil
+	}
+
+	return &Resolver{
+		Method:    method,
+		field:     field,
+		signature: getResolverArgumentSignature(method),
+	}, nil
+}
+
+func (r *Resolver) ArgsSignature() []ResolverArgType {
+	return r.signature
+}
+
+func (r *Resolver) Field() *Field {
+	return r.field
 }
 
 func getResolverArgumentSignature(method reflect.Method) []ResolverArgType {
@@ -87,11 +132,11 @@ func validateFieldResolver(method reflect.Method, returnType reflect.Type) error
 	if method.Type.Out(0) != returnType || !method.Type.Out(1).Implements(errorInterface) {
 		return fmt.Errorf(
 			"return type of (%s, error) was expected for resolver %s on struct %s, got (%s, %s)",
-			returnType.Name(),
+			returnType.String(),
 			method.Name,
 			structType.Name(),
-			funcType.Out(0).Name(),
-			funcType.Out(1).Name(),
+			funcType.Out(0).String(),
+			funcType.Out(1).String(),
 		)
 	}
 
@@ -129,77 +174,24 @@ func validateFieldResolver(method reflect.Method, returnType reflect.Type) error
 	return nil
 }
 
-func NewResolver(t *Type, field *ObjectField) (*Resolver, error) {
-	var (
-		methodName string
-		returnType = field.fieldType.Type
-		fieldName  = field.Name
-	)
-
-	if t.Name() == "Subscription" {
-		methodName = fmt.Sprintf("Subscribe%s", fieldName)
-		returnType = reflect.ChanOf(reflect.RecvDir, returnType)
-	} else {
-		methodName = fmt.Sprintf("Resolve%s", fieldName)
+func getResolverArguments(resolver *Resolver) ([]*Argument, error) {
+	signature := resolver.ArgsSignature()
+	if len(signature) == 0 || signature[0] != ResolverArgInput {
+		return []*Argument{}, nil
 	}
 
-	method, hasMethod := t.MethodByName(methodName)
-	if !hasMethod {
-		if t.Name() == "Subscription" {
-			err := fmt.Errorf(
-				"subscription field %s must have a subscriber method with name %s defined",
-				fieldName,
-				methodName,
-			)
+	reflectType := resolver.Method.Type.In(1)
 
-			return nil, err
-		}
-
-		return nil, nil
-	}
-
-	if err := validateFieldResolver(method, returnType); err != nil {
+	// this input type will not be created in the schema
+	input, err := getOrCreateArgumentType(reflectType)
+	if err != nil {
 		return nil, err
 	}
 
-	return &Resolver{
-		Method:    method,
-		field:     field,
-		signature: getResolverArgumentSignature(method),
-	}, nil
-}
-
-func (r *Resolver) Signature() []ResolverArgType {
-	return r.signature
-}
-
-func (r *Resolver) Field() *ObjectField {
-	return r.field
-}
-
-func getArguments(resolver *Resolver) (*Type, error) {
-	if resolver == nil {
-		return nil, nil
+	args, err := getArguments(input.(*Input), reflectType)
+	if err != nil {
+		return nil, err
 	}
 
-	signature := resolver.Signature()
-	for i, arg := range signature {
-		if arg == ResolverArgInput {
-			reflectType := resolver.Method.Type.In(i + 1)
-
-			t, ok := cache.get(reflectType)
-			if ok {
-				return t, nil
-			}
-
-			t, err := NewType(reflectType)
-			if err != nil {
-				return nil, err
-			}
-
-			return t, nil
-		}
-	}
-
-	return nil, nil
+	return args, nil
 }

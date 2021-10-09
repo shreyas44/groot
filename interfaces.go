@@ -1,7 +1,6 @@
 package groot
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
@@ -11,42 +10,24 @@ import (
 type InterfaceType = parser.InterfaceType
 
 type Interface struct {
-	name        string
-	description string
-	builder     *SchemaBuilder
-	fields      []*Field
-	interface_  *graphql.Interface
-	reflectType reflect.Type
+	name            string
+	description     string
+	builder         *SchemaBuilder
+	fields          []*Field
+	interface_      *graphql.Interface
+	parserInterface *parser.Interface
 }
 
-func NewInterface(t *parser.Type, builder *SchemaBuilder) (*Interface, error) {
-	if t.Kind() != parser.InterfaceDefinition && t.Kind() != parser.Interface {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewInterface must have parser type ParserInterfaceDefinition or ParserInterface, received %s",
-			t.Name(),
-			t.Kind(),
-		)
-		panic(err)
-	}
-
-	var interfaceDefinition *parser.Type
-
+func NewInterface(parserInterface *parser.Interface, builder *SchemaBuilder) (*Interface, error) {
 	interface_ := &Interface{
-		name:        t.Name(),
-		builder:     builder,
-		reflectType: t.Type,
-	}
-	builder.addType(t, interface_)
-
-	if t.Kind() == parser.Interface {
-		interfaceDefinition = t.Definition()
-	} else {
-		name := interface_.name
-		interface_.name = name[0 : len(name)-len("Definition")]
-		interfaceDefinition = t
+		name:            parserInterface.Name(),
+		builder:         builder,
+		parserInterface: parserInterface,
 	}
 
-	fields, err := getFields(interfaceDefinition, builder)
+	builder.addType(parserInterface, interface_)
+
+	fields, err := getFields(parserInterface, builder)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +58,6 @@ func (i *Interface) GraphQLType() graphql.Type {
 	return i.interface_
 }
 
-func (i *Interface) ReflectType() reflect.Type {
-	return i.reflectType
+func (i *Interface) ParserType() parser.Type {
+	return i.parserInterface
 }

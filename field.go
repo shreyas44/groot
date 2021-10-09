@@ -2,7 +2,6 @@ package groot
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
@@ -24,17 +23,7 @@ type Field struct {
 	field             *graphql.Field
 }
 
-func NewField(field *parser.ObjectField, builder *SchemaBuilder) (*Field, error) {
-	object := field.Object()
-	if object.Kind() != parser.Object && object.Kind() != parser.InterfaceDefinition {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewField must have parser type ParserObject or ParserInterfaceDefinition, received %s",
-			object.Name(),
-			object.Kind(),
-		)
-		panic(err)
-	}
-
+func NewField(field *parser.Field, builder *SchemaBuilder) (*Field, error) {
 	var (
 		arguments []*Argument
 		resolver  graphql.FieldResolveFn
@@ -110,11 +99,52 @@ func (field *Field) GraphQLField() *graphql.Field {
 	return field.field
 }
 
-func getArguments(t *parser.Type, builder *SchemaBuilder) ([]*Argument, error) {
+func getOrCreateType(t parser.Type, builder *SchemaBuilder) (GrootType, error) {
+	if grootType, ok := builder.getType(t); ok {
+		return NewNonNull(grootType), nil
+	}
+
+	var grootType GrootType
+	var err error
+
+	switch t := t.(type) {
+	case *parser.Scalar:
+		grootType, err = NewScalar(t, builder)
+	case *parser.Enum:
+		grootType, err = NewEnum(t, builder)
+	case *parser.Object:
+		grootType, err = NewObject(t, builder)
+	case *parser.Interface:
+		grootType, err = NewInterface(t, builder)
+	case *parser.Union:
+		grootType, err = NewUnion(t, builder)
+	case *parser.Input:
+		grootType, err = NewInputObject(t, builder)
+	case *parser.Array:
+		grootType, err = NewArray(t, builder)
+	case *parser.Nullable:
+		gType, err := getOrCreateType(t.Element(), builder)
+		if err != nil {
+			return nil, err
+		}
+
+		return GetNullable(gType), nil
+	default:
+		panic("groot: unexpected error occurred")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewNonNull(grootType), nil
+}
+
+func getArguments(args []*parser.Argument, builder *SchemaBuilder) ([]*Argument, error) {
 	arguments := []*Argument{}
 
-	for _, field := range t.Fields() {
-		argument, err := NewArgument(field, builder)
+	for _, arg := range args {
+		argument, err := NewArgument(arg, builder)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +157,6 @@ func getArguments(t *parser.Type, builder *SchemaBuilder) ([]*Argument, error) {
 	return arguments, nil
 }
 
-// TODO: use groot type to get return type, we can construct a new type from it
 func buildResolver(resolver *parser.Resolver, grootType GrootType) graphql.FieldResolveFn {
 	union, isUnion := GetNullable(grootType).(*Union)
 
@@ -158,7 +187,6 @@ func buildResolver(resolver *parser.Resolver, grootType GrootType) graphql.Field
 	}
 }
 
-// TODO: use groot type to get return type, we can construct a new type from it
 func buildSubscriptionResolver(subscriber *parser.Subscriber, grootType GrootType) graphql.FieldResolveFn {
 	union, isUnion := GetNullable(grootType).(*Union)
 
@@ -232,7 +260,7 @@ func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]ref
 		args = append(args, reflect.ValueOf(p.Source).Convert(structType))
 	}
 
-	for _, arg := range resolver.Signature() {
+	for _, arg := range resolver.ArgsSignature() {
 		switch arg {
 		case parser.ResolverArgInput:
 			structInterface := reflect.New(funcType.In(1)).Interface()

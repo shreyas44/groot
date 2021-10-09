@@ -2,7 +2,6 @@ package groot
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"reflect"
 
@@ -19,22 +18,13 @@ type (
 type ScalarType = parser.ScalarType
 
 type Scalar struct {
-	name        string
-	description string
-	scalar      *graphql.Scalar
-	reflectType reflect.Type
+	name         string
+	description  string
+	scalar       *graphql.Scalar
+	parserScalar *parser.Scalar
 }
 
-func NewScalar(t *parser.Type, builder *SchemaBuilder) (*Scalar, error) {
-	if t.Kind() != parser.Scalar && t.Kind() != parser.CustomScalar {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewScalar must have parser type ParserScalar, received %s",
-			t.Name(),
-			t.Kind(),
-		)
-		panic(err)
-	}
-
+func NewScalar(parserScalar *parser.Scalar, builder *SchemaBuilder) (*Scalar, error) {
 	scalars := map[reflect.Type]*graphql.Scalar{
 		reflect.TypeOf(IntID(0)):     graphql.ID,
 		reflect.TypeOf(StringID("")): graphql.ID,
@@ -52,15 +42,15 @@ func NewScalar(t *parser.Type, builder *SchemaBuilder) (*Scalar, error) {
 	}
 
 	scalar := &Scalar{
-		name:        t.Name(),
-		reflectType: t.Type,
+		name:         parserScalar.Name(),
+		parserScalar: parserScalar,
 	}
 
-	if t.Kind() == parser.Scalar {
-		scalar.scalar = scalars[t.Type]
+	if graphqlScalar, ok := scalars[parserScalar.Type]; ok {
+		scalar.scalar = graphqlScalar
 	}
 
-	builder.addType(t, scalar)
+	builder.addType(parserScalar, scalar)
 	return scalar, nil
 }
 
@@ -90,7 +80,7 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 				panic(err)
 			}
 
-			v := reflect.New(scalar.reflectType).Interface().(ScalarType)
+			v := reflect.New(scalar.parserScalar.ReflectType()).Interface().(ScalarType)
 			err = v.UnmarshalJSON(jsonRepr)
 			if err != nil {
 				panic(err)
@@ -104,7 +94,7 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 				panic(err)
 			}
 
-			v := reflect.New(scalar.reflectType).Interface().(ScalarType)
+			v := reflect.New(scalar.parserScalar.ReflectType()).Interface().(ScalarType)
 			err = v.UnmarshalJSON(jsonRepr)
 			if err != nil {
 				panic(err)
@@ -117,8 +107,8 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 	return scalar.scalar
 }
 
-func (scalar *Scalar) ReflectType() reflect.Type {
-	return scalar.reflectType
+func (scalar *Scalar) ParserType() parser.Type {
+	return scalar.parserScalar
 }
 
 func astValueToGoValue(valueAST ast.Value) (interface{}, error) {

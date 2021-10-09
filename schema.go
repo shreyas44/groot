@@ -7,43 +7,44 @@ import (
 	"github.com/shreyas44/groot/parser"
 )
 
+var (
+	_ GrootType = (*Object)(nil)
+	_ GrootType = (*InputObject)(nil)
+	_ GrootType = (*Interface)(nil)
+	_ GrootType = (*Union)(nil)
+	_ GrootType = (*Scalar)(nil)
+	_ GrootType = (*Enum)(nil)
+	_ GrootType = (*Array)(nil)
+	_ GrootType = (*NonNull)(nil)
+)
+
 type GrootType interface {
 	GraphQLType() graphql.Type
-	ReflectType() reflect.Type
+	ParserType() parser.Type
 }
 
 type SchemaConfig struct {
-	Query        *parser.Type
-	Mutation     *parser.Type
-	Subscription *parser.Type
-	Types        []*parser.Type
+	Query        *parser.Object
+	Mutation     *parser.Object
+	Subscription *parser.Object
+	Types        []parser.Type
 	Extensions   []graphql.Extension
 }
 
 type SchemaBuilder struct {
-	grootTypes      map[*parser.Type]GrootType
+	grootTypes      map[parser.Type]GrootType
 	reflectGrootMap map[reflect.Type]GrootType
 }
 
-func (builder *SchemaBuilder) addType(t *parser.Type, grootType GrootType) {
+func (builder *SchemaBuilder) addType(t parser.Type, grootType GrootType) {
 	builder.grootTypes[t] = grootType
-
-	if t.Kind() == parser.Interface {
-		builder.grootTypes[t.Definition()] = grootType
-		builder.reflectGrootMap[t.Definition().Type] = grootType
-	}
-
-	builder.reflectGrootMap[t.Type] = grootType
+	builder.reflectGrootMap[t.ReflectType()] = grootType
 }
 
-func (builder *SchemaBuilder) getType(t *parser.Type) (GrootType, bool) {
+func (builder *SchemaBuilder) getType(t parser.Type) (GrootType, bool) {
 	grootType, ok := builder.grootTypes[t]
 	if ok {
 		return grootType, true
-	}
-
-	if !ok && t.Kind() == parser.Interface {
-		return builder.getType(t.Definition())
 	}
 
 	return nil, false
@@ -51,7 +52,7 @@ func (builder *SchemaBuilder) getType(t *parser.Type) (GrootType, bool) {
 
 func NewSchemaBuilder() *SchemaBuilder {
 	return &SchemaBuilder{
-		grootTypes:      map[*parser.Type]GrootType{},
+		grootTypes:      map[parser.Type]GrootType{},
 		reflectGrootMap: map[reflect.Type]GrootType{},
 	}
 }
@@ -102,7 +103,7 @@ func NewSchema(config SchemaConfig) (graphql.Schema, error) {
 	return graphql.NewSchema(schemaConfig)
 }
 
-func (builder *SchemaBuilder) parseAndGetRoot(t *parser.Type) (*graphql.Object, error) {
+func (builder *SchemaBuilder) parseAndGetRoot(t *parser.Object) (*graphql.Object, error) {
 	root, err := NewObject(t, builder)
 	if err != nil {
 		return nil, err

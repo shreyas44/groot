@@ -1,9 +1,6 @@
 package groot
 
 import (
-	"fmt"
-	"reflect"
-
 	"github.com/graphql-go/graphql"
 	"github.com/shreyas44/groot/parser"
 )
@@ -17,44 +14,33 @@ type Object struct {
 	builder    *SchemaBuilder
 	interfaces []*Interface
 
-	reflectType reflect.Type
+	parserObject parser.Type
 }
 
-func NewObject(t *parser.Type, builder *SchemaBuilder) (*Object, error) {
-	if t.Kind() != parser.Object {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewObject must have parser type ParserObject, received %s",
-			t.Name(),
-			t.Kind(),
-		)
-		panic(err)
-	}
-
+func NewObject(parserObject *parser.Object, builder *SchemaBuilder) (*Object, error) {
 	var (
-		structName = t.Name()
+		structName = parserObject.Name()
 		object     = &Object{
-			name:        structName,
-			interfaces:  []*Interface{},
-			builder:     builder,
-			reflectType: t.Type,
+			name:         structName,
+			interfaces:   []*Interface{},
+			builder:      builder,
+			parserObject: parserObject,
 		}
 	)
 
-	builder.addType(t, object)
+	builder.addType(parserObject, object)
 
-	if t.Kind() == parser.Object {
-		for _, interfaceType := range t.Interfaces() {
-			interface_, err := getOrCreateType(interfaceType, builder)
-			if err != nil {
-				return nil, err
-			}
-
-			interface_ = GetNullable(interface_)
-			object.interfaces = append(object.interfaces, interface_.(*Interface))
+	for _, interfaceType := range parserObject.Interfaces() {
+		interface_, err := getOrCreateType(interfaceType, builder)
+		if err != nil {
+			return nil, err
 		}
+
+		interface_ = GetNullable(interface_)
+		object.interfaces = append(object.interfaces, interface_.(*Interface))
 	}
 
-	fields, err := getFields(t, builder)
+	fields, err := getFields(parserObject, builder)
 	if err != nil {
 		return nil, err
 	}
@@ -87,11 +73,11 @@ func (object *Object) GraphQLType() graphql.Type {
 	return object.object
 }
 
-func (object *Object) ReflectType() reflect.Type {
-	return object.reflectType
+func (object *Object) ParserType() parser.Type {
+	return object.parserObject
 }
 
-func getFields(t *parser.Type, builder *SchemaBuilder) ([]*Field, error) {
+func getFields(t parser.TypeWithFields, builder *SchemaBuilder) ([]*Field, error) {
 	fields := []*Field{}
 
 	for _, parserField := range t.Fields() {

@@ -1,9 +1,8 @@
 package groot
 
 import (
-	"reflect"
-
 	"github.com/graphql-go/graphql"
+	"github.com/shreyas44/groot/parser"
 )
 
 type NonNull struct {
@@ -22,8 +21,8 @@ func (n *NonNull) GraphQLType() graphql.Type {
 	return graphql.NewNonNull(n.value.GraphQLType())
 }
 
-func (n *NonNull) ReflectType() reflect.Type {
-	return n.value.ReflectType()
+func (n *NonNull) ParserType() parser.Type {
+	return n.value.ParserType()
 }
 
 func GetNullable(t GrootType) GrootType {

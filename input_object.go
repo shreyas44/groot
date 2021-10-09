@@ -1,50 +1,31 @@
 package groot
 
 import (
-	"fmt"
-	"reflect"
-
 	"github.com/graphql-go/graphql"
 	"github.com/shreyas44/groot/parser"
 )
 
 type InputObject struct {
 	name        string
-	Description string
+	description string
 	object      *graphql.InputObject
 	fields      []*Argument
-	reflectType reflect.Type
+	parserInput *parser.Input
 }
 
-func NewInputObject(t *parser.Type, builder *SchemaBuilder) (*InputObject, error) {
-	if t.Kind() != parser.Object {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewInputObject must have parser type ParserObject, received %s",
-			t.Name(),
-			t.Kind(),
-		)
-		panic(err)
-	}
-
-	structName := t.Name()
+func NewInputObject(input *parser.Input, builder *SchemaBuilder) (*InputObject, error) {
 	inputObject := &InputObject{
-		name:        structName,
-		fields:      []*Argument{},
-		reflectType: t.Type,
+		name:        input.Name(),
+		parserInput: input,
 	}
 
-	for _, field := range t.Fields() {
-		arg, err := NewArgument(field, builder)
-		if err != nil {
-			return nil, err
-		}
-
-		if arg != nil {
-			inputObject.fields = append(inputObject.fields, arg)
-		}
+	args, err := getArguments(input.Arguments(), builder)
+	if err != nil {
+		return nil, err
 	}
 
-	builder.addType(t, inputObject)
+	inputObject.fields = args
+	builder.addType(input, inputObject)
 	return inputObject, nil
 }
 
@@ -56,7 +37,7 @@ func (object *InputObject) GraphQLType() graphql.Type {
 	object.object = graphql.NewInputObject(graphql.InputObjectConfig{
 		Name:        object.name,
 		Fields:      graphql.InputObjectConfigFieldMap{},
-		Description: object.Description,
+		Description: object.description,
 	})
 
 	for _, field := range object.fields {
@@ -70,6 +51,6 @@ func (object *InputObject) GraphQLType() graphql.Type {
 	return object.object
 }
 
-func (object *InputObject) ReflectType() reflect.Type {
-	return object.reflectType
+func (object *InputObject) ParserType() parser.Type {
+	return object.parserInput
 }

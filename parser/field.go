@@ -5,41 +5,35 @@ import (
 	"reflect"
 )
 
-type ObjectField struct {
+type Field struct {
 	reflect.StructField
-	fieldType         *Type
-	object            *Type
-	arguments         *Type
+	fieldType         Type
+	object            TypeWithFields
+	arguments         []*Argument
 	resolver          *Resolver
 	subscriber        *Subscriber
 	jsonName          string
 	description       string
 	deprecationReason string
-	defaultValue      string
 }
 
-func NewObjectField(t *Type, field reflect.StructField) (*ObjectField, error) {
+func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 	if field.Tag.Get("groot_ignore") == "true" {
 		return nil, nil
-	}
-
-	if t.Kind() != Object && t.Kind() != InterfaceDefinition {
-		panic("something happened")
 	}
 
 	var (
 		subscriber  *Subscriber
 		resolver    *Resolver
-		arguments   *Type
-		fieldType   *Type
+		arguments   []*Argument
+		fieldType   Type
 		err         error
-		objectField = &ObjectField{
+		objectField = &Field{
 			StructField:       field,
 			object:            t,
 			description:       field.Tag.Get("description"),
 			jsonName:          field.Tag.Get("json"),
 			deprecationReason: field.Tag.Get("deprecate"),
-			defaultValue:      field.Tag.Get("default"),
 		}
 	)
 
@@ -49,25 +43,36 @@ func NewObjectField(t *Type, field reflect.StructField) (*ObjectField, error) {
 	}
 
 	objectField.fieldType = fieldType
-	if err := validateFieldType(objectField); err != nil {
+	if err := validateFieldType(t.ReflectType(), field); err != nil {
 		return nil, err
 	}
 
 	if t.Name() == "Subscription" {
-		if subscriber, err = NewResolver(t, objectField); err != nil {
+		if subscriber, err = NewResolver(objectField); err != nil {
 			return nil, err
 		}
 
-		if arguments, err = getArguments(subscriber); err != nil {
+		if err := validateFieldResolver(subscriber.Method, reflect.ChanOf(reflect.RecvDir, field.Type)); err != nil {
+			return nil, err
+		}
+
+		if arguments, err = getResolverArguments(subscriber); err != nil {
 			return nil, err
 		}
 	} else {
-		if resolver, err = NewResolver(t, objectField); err != nil {
+		if resolver, err = NewResolver(objectField); err != nil {
 			return nil, err
 		}
 
-		if arguments, err = getArguments(resolver); err != nil {
-			return nil, err
+		if resolver != nil {
+			if err := validateFieldResolver(resolver.Method, field.Type); err != nil {
+				return nil, err
+			}
+
+			arguments, err = getResolverArguments(resolver)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -78,31 +83,31 @@ func NewObjectField(t *Type, field reflect.StructField) (*ObjectField, error) {
 	return objectField, nil
 }
 
-func (f *ObjectField) Object() *Type {
+func (f *Field) Object() TypeWithFields {
 	return f.object
 }
 
-func (f *ObjectField) Arguments() *Type {
+func (f *Field) Arguments() []*Argument {
 	return f.arguments
 }
 
-func (f *ObjectField) Resolver() *Resolver {
+func (f *Field) Resolver() *Resolver {
 	return f.resolver
 }
 
-func (f *ObjectField) Subscriber() *Subscriber {
+func (f *Field) Subscriber() *Subscriber {
 	return f.subscriber
 }
 
-func (f *ObjectField) Type() *Type {
+func (f *Field) Type() Type {
 	return f.fieldType
 }
 
-func (f *ObjectField) Description() string {
+func (f *Field) Description() string {
 	return f.description
 }
 
-func (f *ObjectField) JSONName() string {
+func (f *Field) JSONName() string {
 	if f.jsonName == "" {
 		return f.Name
 	}
@@ -110,33 +115,29 @@ func (f *ObjectField) JSONName() string {
 	return f.jsonName
 }
 
-func (f *ObjectField) DeprecationReason() string {
+func (f *Field) DeprecationReason() string {
 	return f.deprecationReason
 }
 
-func (f *ObjectField) DefaultValue() string {
-	return f.defaultValue
-}
-
-func validateFieldType(field *ObjectField) error {
-	parserType, err := getTypeKind(field.Type().Type)
+func validateFieldType(structType reflect.Type, field reflect.StructField) error {
+	parserType, err := getTypeKind(field.Type)
 	if err != nil {
 		return fmt.Errorf(
 			"field type %s not supported for field %s on struct %s \nif you think this is a mistake please open an issue at github.com/shreyas44/groot",
-			field.Type().Name(),
+			field.Type.Name(),
 			field.Name,
-			field.Object().Name(),
+			structType.Name(),
 		)
 	}
 
-	if parserType == InterfaceDefinition {
+	if parserType == KindInterfaceDefinition {
 		return fmt.Errorf(
 			"received an interface definition for field type %s for field %s on struct %s\n"+
 				"create a Go interface corresponding to the GraphQL interface and use that instead\n"+
 				"see https://groot.shreyas44.com/type-definitions/interface for more info",
-			field.Type().Name(),
-			field.StructField.Name,
-			field.Object().Name(),
+			field.Type.Name(),
+			field.Name,
+			structType.Name(),
 		)
 	}
 

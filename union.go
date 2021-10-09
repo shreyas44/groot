@@ -1,7 +1,6 @@
 package groot
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
@@ -18,26 +17,17 @@ type Union struct {
 	union   *graphql.Union
 	builder *SchemaBuilder
 
-	reflectType reflect.Type
+	parserUnion *parser.Union
 }
 
-func NewUnion(t *parser.Type, builder *SchemaBuilder) (*Union, error) {
-	if t.Kind() != parser.Union {
-		err := fmt.Errorf(
-			"groot: reflect.Type %s passed to NewUnion must have parser type ParserUnion, received %s",
-			t.Name(),
-			t.Kind(),
-		)
-		panic(err)
-	}
-
+func NewUnion(t *parser.Union, builder *SchemaBuilder) (*Union, error) {
 	var (
 		name  = t.Name()
 		union = &Union{
 			name:        name,
 			builder:     builder,
 			members:     []*Object{},
-			reflectType: t.Type,
+			parserUnion: t,
 		}
 	)
 
@@ -73,7 +63,6 @@ func (union *Union) GraphQLType() graphql.Type {
 		Description: union.description,
 		Types:       placeholderTypes,
 		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
-			// TODO
 			valueType := reflect.TypeOf(p.Value)
 			return union.builder.reflectGrootMap[valueType].GraphQLType().(*graphql.Object)
 		},
@@ -88,13 +77,13 @@ func (union *Union) GraphQLType() graphql.Type {
 	return union.union
 }
 
-func (union *Union) ReflectType() reflect.Type {
-	return union.reflectType
+func (union *Union) ParserType() parser.Type {
+	return union.parserUnion
 }
 
 func (union *Union) resolveValue(p graphql.ResolveTypeParams) reflect.Value {
 	for _, member := range union.members {
-		name := member.reflectType.Name()
+		name := member.parserObject.Name()
 		field := reflect.ValueOf(p.Value).FieldByName(name)
 
 		if !field.IsZero() {
@@ -102,6 +91,6 @@ func (union *Union) resolveValue(p graphql.ResolveTypeParams) reflect.Value {
 		}
 	}
 
-	firstValue := reflect.ValueOf(p.Value).FieldByName(union.members[0].reflectType.Name())
+	firstValue := reflect.ValueOf(p.Value).FieldByName(union.members[0].parserObject.Name())
 	return firstValue
 }
