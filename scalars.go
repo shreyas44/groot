@@ -10,58 +10,37 @@ import (
 	"github.com/shreyas44/groot/parser"
 )
 
+type ScalarType = parser.ScalarType
+
 type (
 	StringID string
 	IntID    int
 )
 
-type ScalarType = parser.ScalarType
-
-type Scalar struct {
-	name         string
-	description  string
-	scalar       *graphql.Scalar
-	parserScalar *parser.Scalar
+var builtinScalars = map[reflect.Type]*graphql.Scalar{
+	reflect.TypeOf(IntID(0)):     graphql.ID,
+	reflect.TypeOf(StringID("")): graphql.ID,
+	reflect.TypeOf(int(0)):       graphql.Int,
+	reflect.TypeOf(int8(0)):      graphql.Int,
+	reflect.TypeOf(int16(0)):     graphql.Int,
+	reflect.TypeOf(int32(0)):     graphql.Int,
+	reflect.TypeOf(uint(0)):      graphql.Int,
+	reflect.TypeOf(uint8(0)):     graphql.Int,
+	reflect.TypeOf(uint16(0)):    graphql.Int,
+	reflect.TypeOf(float32(0.0)): graphql.Float,
+	reflect.TypeOf(float64(0.0)): graphql.Float,
+	reflect.TypeOf(""):           graphql.String,
+	reflect.TypeOf(false):        graphql.Boolean,
 }
 
-func NewScalar(parserScalar *parser.Scalar, builder *SchemaBuilder) (*Scalar, error) {
-	scalars := map[reflect.Type]*graphql.Scalar{
-		reflect.TypeOf(IntID(0)):     graphql.ID,
-		reflect.TypeOf(StringID("")): graphql.ID,
-		reflect.TypeOf(int(0)):       graphql.Int,
-		reflect.TypeOf(int8(0)):      graphql.Int,
-		reflect.TypeOf(int16(0)):     graphql.Int,
-		reflect.TypeOf(int32(0)):     graphql.Int,
-		reflect.TypeOf(uint(0)):      graphql.Int,
-		reflect.TypeOf(uint8(0)):     graphql.Int,
-		reflect.TypeOf(uint16(0)):    graphql.Int,
-		reflect.TypeOf(float32(0.0)): graphql.Float,
-		reflect.TypeOf(float64(0.0)): graphql.Float,
-		reflect.TypeOf(""):           graphql.String,
-		reflect.TypeOf(false):        graphql.Boolean,
+func NewScalar(parserScalar *parser.Scalar, builder *SchemaBuilder) *graphql.Scalar {
+	if graphqlScalar, ok := builtinScalars[parserScalar.ReflectType()]; ok {
+		return graphqlScalar
 	}
 
-	scalar := &Scalar{
-		name:         parserScalar.Name(),
-		parserScalar: parserScalar,
-	}
-
-	if graphqlScalar, ok := scalars[parserScalar.Type]; ok {
-		scalar.scalar = graphqlScalar
-	}
-
-	builder.addType(parserScalar, scalar)
-	return scalar, nil
-}
-
-func (scalar *Scalar) GraphQLType() graphql.Type {
-	if scalar.scalar != nil {
-		return scalar.scalar
-	}
-
-	scalar.scalar = graphql.NewScalar(graphql.ScalarConfig{
-		Name:        scalar.name,
-		Description: scalar.description,
+	// TODO: description
+	scalar := graphql.NewScalar(graphql.ScalarConfig{
+		Name: parserScalar.Name(),
 		Serialize: func(value interface{}) interface{} {
 			var v ScalarType
 			if reflect.TypeOf(value).Kind() != reflect.Ptr {
@@ -80,7 +59,7 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 				panic(err)
 			}
 
-			v := reflect.New(scalar.parserScalar.ReflectType()).Interface().(ScalarType)
+			v := reflect.New(parserScalar.ReflectType()).Interface().(ScalarType)
 			err = v.UnmarshalJSON(jsonRepr)
 			if err != nil {
 				panic(err)
@@ -94,7 +73,7 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 				panic(err)
 			}
 
-			v := reflect.New(scalar.parserScalar.ReflectType()).Interface().(ScalarType)
+			v := reflect.New(parserScalar.ReflectType()).Interface().(ScalarType)
 			err = v.UnmarshalJSON(jsonRepr)
 			if err != nil {
 				panic(err)
@@ -104,11 +83,8 @@ func (scalar *Scalar) GraphQLType() graphql.Type {
 		},
 	})
 
-	return scalar.scalar
-}
-
-func (scalar *Scalar) ParserType() parser.Type {
-	return scalar.parserScalar
+	builder.addType(parserScalar, scalar)
+	return scalar
 }
 
 func astValueToGoValue(valueAST ast.Value) (interface{}, error) {

@@ -5,52 +5,21 @@ import (
 	"github.com/shreyas44/groot/parser"
 )
 
-type InputObject struct {
-	name        string
-	description string
-	object      *graphql.InputObject
-	fields      []*Argument
-	parserInput *parser.Input
-}
-
-func NewInputObject(input *parser.Input, builder *SchemaBuilder) (*InputObject, error) {
-	inputObject := &InputObject{
-		name:        input.Name(),
-		parserInput: input,
-	}
-
-	args, err := getArguments(input.Arguments(), builder)
-	if err != nil {
-		return nil, err
-	}
-
-	inputObject.fields = args
-	builder.addType(input, inputObject)
-	return inputObject, nil
-}
-
-func (object *InputObject) GraphQLType() graphql.Type {
-	if object.object != nil {
-		return object.object
-	}
-
-	object.object = graphql.NewInputObject(graphql.InputObjectConfig{
-		Name:        object.name,
-		Fields:      graphql.InputObjectConfigFieldMap{},
-		Description: object.description,
+func NewInputObject(input *parser.Input, builder *SchemaBuilder) *graphql.InputObject {
+	// TODO: description
+	object := graphql.NewInputObject(graphql.InputObjectConfig{
+		Name:   input.Name(),
+		Fields: graphql.InputObjectConfigFieldMap{},
 	})
 
-	for _, field := range object.fields {
-		object.object.AddFieldConfig(field.name, &graphql.InputObjectFieldConfig{
-			Type:         field.type_.GraphQLType(),
-			Description:  field.description,
-			DefaultValue: field.default_,
+	builder.addType(input, object)
+	for _, arg := range input.Arguments() {
+		object.AddFieldConfig(arg.JSONName(), &graphql.InputObjectFieldConfig{
+			Type:         NewArgument(arg, builder).Type,
+			Description:  arg.Description(),
+			DefaultValue: arg.DefaultValue(),
 		})
 	}
 
-	return object.object
-}
-
-func (object *InputObject) ParserType() parser.Type {
-	return object.parserInput
+	return object
 }

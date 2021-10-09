@@ -9,81 +9,39 @@ import (
 
 type UnionType = parser.UnionType
 
-type Union struct {
-	name        string
-	description string
-
-	members []*Object
-	union   *graphql.Union
-	builder *SchemaBuilder
-
-	parserUnion *parser.Union
-}
-
-func NewUnion(t *parser.Union, builder *SchemaBuilder) (*Union, error) {
-	var (
-		name  = t.Name()
-		union = &Union{
-			name:        name,
-			builder:     builder,
-			members:     []*Object{},
-			parserUnion: t,
-		}
-	)
-
-	builder.addType(t, union)
-
-	for _, member := range t.Members() {
-		obj, err := getOrCreateType(member, builder)
-		if err != nil {
-			return nil, err
-		}
-
-		union.members = append(union.members, GetNullable(obj).(*Object))
-	}
-
-	return union, nil
-}
-
-func (union *Union) GraphQLType() graphql.Type {
-	if union.union != nil {
-		return union.union
-	}
-
+func NewUnion(parserUnion *parser.Union, builder *SchemaBuilder) *graphql.Union {
 	placeholderTypes := []*graphql.Object{}
-	for range union.members {
+	for range parserUnion.Members() {
 		placeholderTypes = append(placeholderTypes, graphql.NewObject(graphql.ObjectConfig{
 			Name:   randSeq(10),
 			Fields: graphql.Fields{},
 		}))
 	}
 
-	union.union = graphql.NewUnion(graphql.UnionConfig{
-		Name:        union.name,
-		Description: union.description,
-		Types:       placeholderTypes,
+	// TODO: description
+	union := graphql.NewUnion(graphql.UnionConfig{
+		Name:  parserUnion.Name(),
+		Types: placeholderTypes,
 		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
 			valueType := reflect.TypeOf(p.Value)
-			return union.builder.reflectGrootMap[valueType].GraphQLType().(*graphql.Object)
+			return builder.reflectGrootMap[valueType].(*graphql.Object)
 		},
 	})
 
-	types := union.union.Types()
-	for i, member := range union.members {
+	builder.addType(parserUnion, union)
+
+	types := union.Types()
+	for i, parserObject := range parserUnion.Members() {
 		// we're changing the underlying value in the slice
-		types[i] = member.GraphQLType().(*graphql.Object)
+		types[i] = NewObject(parserObject, builder)
 	}
 
-	return union.union
+	return union
 }
 
-func (union *Union) ParserType() parser.Type {
-	return union.parserUnion
-}
-
-func (union *Union) resolveValue(p graphql.ResolveTypeParams) reflect.Value {
-	for _, member := range union.members {
-		name := member.parserObject.Name()
+func resolveUnionValue(union *parser.Union, p graphql.ResolveTypeParams) reflect.Value {
+	for _, member := range union.Members() {
+		name := member.Name()
 		field := reflect.ValueOf(p.Value).FieldByName(name)
 
 		if !field.IsZero() {
@@ -91,6 +49,6 @@ func (union *Union) resolveValue(p graphql.ResolveTypeParams) reflect.Value {
 		}
 	}
 
-	firstValue := reflect.ValueOf(p.Value).FieldByName(union.members[0].parserObject.Name())
+	firstValue := reflect.ValueOf(p.Value).FieldByName(union.Members()[0].Name())
 	return firstValue
 }

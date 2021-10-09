@@ -8,157 +8,87 @@ import (
 	"github.com/shreyas44/groot/parser"
 )
 
-type CustomName interface {
-	GraphQLName() string
-}
+func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field {
+	var resolver graphql.FieldResolveFn
+	var subscribe graphql.FieldResolveFn
 
-type Field struct {
-	name              string
-	description       string
-	deprecationReason string
-	type_             GrootType
-	arguments         []*Argument
-	resolve           graphql.FieldResolveFn
-	subscribe         graphql.FieldResolveFn
-	field             *graphql.Field
-}
-
-func NewField(field *parser.Field, builder *SchemaBuilder) (*Field, error) {
-	var (
-		arguments []*Argument
-		resolver  graphql.FieldResolveFn
-		subscribe graphql.FieldResolveFn = nil
-	)
-
-	grootType, err := getOrCreateType(field.Type(), builder)
-	if err != nil {
-		return nil, err
-	}
+	graphqlType := getOrCreateType(parserField.Type(), builder)
 
 	// default resolver
 	resolver = func(p graphql.ResolveParams) (interface{}, error) {
-		value := reflect.ValueOf(p.Source).FieldByName(field.Name)
+		value := reflect.ValueOf(p.Source).FieldByName(parserField.Name)
 		return value.Interface(), nil
 	}
 
-	if field.Subscriber() != nil {
+	if parserField.Subscriber() != nil {
 		// subscription resolver
-		subscribe = buildSubscriptionResolver(field.Subscriber(), grootType)
+		subscribe = buildSubscriptionResolver(parserField.Subscriber(), parserField.Type())
 		resolver = func(p graphql.ResolveParams) (interface{}, error) {
 			return p.Source, nil
 		}
 
-	} else if field.Resolver() != nil {
+	} else if parserField.Resolver() != nil {
 		// custom resolver
-		resolver = buildResolver(field.Resolver(), grootType)
-	}
-
-	if args := field.Arguments(); args != nil {
-		if arguments, err = getArguments(args, builder); err != nil {
-			return nil, err
-		}
-	}
-
-	grootField := &Field{
-		name:              field.JSONName(),
-		description:       field.Description(),
-		type_:             grootType,
-		resolve:           resolver,
-		subscribe:         subscribe,
-		deprecationReason: field.DeprecationReason(),
-		arguments:         arguments,
-	}
-
-	return grootField, nil
-}
-
-func (field *Field) GraphQLField() *graphql.Field {
-	if field.field != nil {
-		return field.field
+		resolver = buildResolver(parserField.Resolver(), parserField.Type())
 	}
 
 	args := graphql.FieldConfigArgument{}
-
-	for _, argument := range field.arguments {
-		args[argument.name] = argument.GraphQLArgument()
+	for _, parserArgs := range parserField.Arguments() {
+		args[parserArgs.JSONName()] = NewArgument(parserArgs, builder)
 	}
 
-	field.field = &graphql.Field{
-		Name:              field.name,
-		Type:              field.type_.GraphQLType(),
-		Description:       field.description,
-		Resolve:           field.resolve,
-		DeprecationReason: field.deprecationReason,
+	field := &graphql.Field{
+		Name:              parserField.JSONName(),
+		Type:              graphqlType,
+		Description:       parserField.Description(),
+		Resolve:           resolver,
+		DeprecationReason: parserField.DeprecationReason(),
 		Args:              args,
 	}
 
-	if field.subscribe != nil {
-		field.field.Subscribe = field.subscribe
+	if subscribe != nil {
+		field.Subscribe = subscribe
 	}
 
-	return field.field
+	return field
 }
 
-func getOrCreateType(t parser.Type, builder *SchemaBuilder) (GrootType, error) {
-	if grootType, ok := builder.getType(t); ok {
-		return NewNonNull(grootType), nil
+func getOrCreateType(t parser.Type, builder *SchemaBuilder) graphql.Type {
+	if graphqlType, ok := builder.getType(t); ok {
+		return NewNonNull(graphqlType)
 	}
-
-	var grootType GrootType
-	var err error
 
 	switch t := t.(type) {
 	case *parser.Scalar:
-		grootType, err = NewScalar(t, builder)
+		return NewNonNull(NewScalar(t, builder))
 	case *parser.Enum:
-		grootType, err = NewEnum(t, builder)
+		return NewNonNull(NewEnum(t, builder))
 	case *parser.Object:
-		grootType, err = NewObject(t, builder)
+		return NewNonNull(NewObject(t, builder))
 	case *parser.Interface:
-		grootType, err = NewInterface(t, builder)
+		return NewNonNull(NewInterface(t, builder))
 	case *parser.Union:
-		grootType, err = NewUnion(t, builder)
+		return NewNonNull(NewUnion(t, builder))
 	case *parser.Input:
-		grootType, err = NewInputObject(t, builder)
+		return NewNonNull(NewInputObject(t, builder))
 	case *parser.Array:
-		grootType, err = NewArray(t, builder)
+		return NewNonNull(NewArray(getOrCreateType(t.Element(), builder)))
 	case *parser.Nullable:
-		gType, err := getOrCreateType(t.Element(), builder)
-		if err != nil {
-			return nil, err
-		}
-
-		return GetNullable(gType), nil
-	default:
-		panic("groot: unexpected error occurred")
+		return GetNullable(getOrCreateType(t.Element(), builder)).(graphql.Type)
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	return NewNonNull(grootType), nil
+	panic("groot: unexpected error occurred")
 }
 
-func getArguments(args []*parser.Argument, builder *SchemaBuilder) ([]*Argument, error) {
-	arguments := []*Argument{}
+func buildResolver(resolver *parser.Resolver, parserType parser.Type) graphql.FieldResolveFn {
+	var union *parser.Union
+	var isUnion bool
 
-	for _, arg := range args {
-		argument, err := NewArgument(arg, builder)
-		if err != nil {
-			return nil, err
-		}
-
-		if argument != nil {
-			arguments = append(arguments, argument)
-		}
+	if nullable, isNullable := parserType.(*parser.Nullable); isNullable {
+		union, isUnion = nullable.Element().(*parser.Union)
+	} else {
+		union, isUnion = parserType.(*parser.Union)
 	}
-
-	return arguments, nil
-}
-
-func buildResolver(resolver *parser.Resolver, grootType GrootType) graphql.FieldResolveFn {
-	union, isUnion := GetNullable(grootType).(*Union)
 
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		args, err := makeResolverArgs(resolver, p)
@@ -176,7 +106,7 @@ func buildResolver(resolver *parser.Resolver, grootType GrootType) graphql.Field
 				Context: p.Context,
 			}
 
-			value = union.resolveValue(p)
+			value = resolveUnionValue(union, p)
 		}
 
 		if resErr.IsNil() {
@@ -187,8 +117,15 @@ func buildResolver(resolver *parser.Resolver, grootType GrootType) graphql.Field
 	}
 }
 
-func buildSubscriptionResolver(subscriber *parser.Subscriber, grootType GrootType) graphql.FieldResolveFn {
-	union, isUnion := GetNullable(grootType).(*Union)
+func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.Type) graphql.FieldResolveFn {
+	var union *parser.Union
+	var isUnion bool
+
+	if nullable, isNullable := parserType.(*parser.Nullable); isNullable {
+		union, isUnion = nullable.Element().(*parser.Union)
+	} else {
+		union, isUnion = parserType.(*parser.Union)
+	}
 
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		args, err := makeResolverArgs(subscriber, p)
@@ -233,7 +170,7 @@ func buildSubscriptionResolver(subscriber *parser.Subscriber, grootType GrootTyp
 						Context: p.Context,
 					}
 
-					value = union.resolveValue(p)
+					value = resolveUnionValue(union, p)
 				}
 
 				ch <- value.Interface()
