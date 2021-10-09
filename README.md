@@ -44,4 +44,4 @@ Groot achieves all this while still being compatible with extensions built for `
 - [Descriptions for type definitions](https://github.com/shreyas44/groot/issues/2)
 - [Enum value description and deprecation](https://github.com/shreyas44/groot/issues/2)
 
-_Note, the library isn't tested yet. A few breaking changes should be expected with the implementation of interfaces._
+_Note, the library isn't tested yet._
