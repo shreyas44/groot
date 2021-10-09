@@ -1,38 +1,33 @@
 package groot
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/shreyas44/groot/parser"
 )
 
-// wrapper around parser.ParseType
-func ParseType(i interface{}) (parser.Type, error) {
-	return parser.ParseType(reflect.TypeOf(i))
-}
-
-// same as ParseType, but panics if an error is encountered
-func MustParseType(i interface{}) parser.Type {
-	t, err := ParseType(i)
-	if err != nil {
-		panic(err)
-	}
-
-	return t
-}
-
 func ParseObject(i interface{}) (*parser.Object, error) {
-	parserType, err := parser.ParseType(reflect.TypeOf(i))
-	if err != nil {
-		return nil, err
-	}
+	return parser.ParseObject(reflect.TypeOf(i))
+}
 
-	if object, ok := parserType.(*parser.Object); ok {
-		return object, nil
-	}
+func ParseInputObject(i interface{}) (*parser.Input, error) {
+	return parser.ParseInputObject(reflect.TypeOf(i))
+}
 
-	return nil, fmt.Errorf("non object type passed to ParseObject")
+func ParseUnion(i interface{}) (*parser.Union, error) {
+	return parser.ParseUnion(reflect.TypeOf(i))
+}
+
+func ParseInterface(i interface{}) (*parser.Interface, error) {
+	return parser.ParseInterface(reflect.TypeOf(i))
+}
+
+func ParseEnum(i interface{}) (*parser.Enum, error) {
+	return parser.ParseEnum(reflect.TypeOf(i))
+}
+
+func ParseScalar(i interface{}) (*parser.Scalar, error) {
+	return parser.ParseScalar(reflect.TypeOf(i))
 }
 
 func MustParseObject(i interface{}) *parser.Object {
@@ -42,4 +37,49 @@ func MustParseObject(i interface{}) *parser.Object {
 	}
 
 	return object
+}
+
+func MustParseInputObject(i interface{}) *parser.Input {
+	inputObject, err := ParseInputObject(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return inputObject
+}
+
+func MustParseUnion(i interface{}) *parser.Union {
+	union, err := ParseUnion(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return union
+}
+
+func MustParseInterface(i interface{}) *parser.Interface {
+	interfaceType, err := ParseInterface(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return interfaceType
+}
+
+func MustParseScalar(i interface{}) *parser.Scalar {
+	scalar, err := ParseScalar(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return scalar
+}
+
+func MustParseEnum(i interface{}) *parser.Enum {
+	enum, err := ParseEnum(i)
+	if err != nil {
+		panic(err)
+	}
+
+	return enum
 }
