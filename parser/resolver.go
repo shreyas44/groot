@@ -12,13 +12,14 @@ type Subscriber = Resolver
 
 type (
 	ResolverArgType int
+	ResolveType     int
 )
 
 const (
-	ResolverArgInput ResolverArgType = iota
+	ResolverArgOther ResolverArgType = iota
+	ResolverArgInput
 	ResolverArgContext
 	ResolverArgInfo
-	ResolverArgOther
 )
 
 type Resolver struct {
@@ -30,30 +31,35 @@ type Resolver struct {
 func NewResolver(field *Field) (*Resolver, error) {
 	var (
 		methodName string
-		returnType = field.fieldType.ReflectType()
 		fieldName  = field.Name
 		object     = field.Object()
 	)
 
 	if object.Name() == "Subscription" {
 		methodName = fmt.Sprintf("Subscribe%s", fieldName)
-		returnType = reflect.ChanOf(reflect.RecvDir, returnType)
 	} else {
 		methodName = fmt.Sprintf("Resolve%s", fieldName)
 	}
 
 	method, hasMethod := object.MethodByName(methodName)
-	if !hasMethod {
-		if object.Name() == "Subscription" {
-			err := fmt.Errorf(
+
+	if object.Name() == "Subscription" {
+		if !hasMethod {
+			return nil, fmt.Errorf(
 				"subscription field %s must have a subscriber method with name %s defined",
 				fieldName,
 				methodName,
 			)
-
-			return nil, err
 		}
 
+		if err := validateFieldSubscriber(method, reflect.ChanOf(reflect.RecvDir, field.StructField.Type)); err != nil {
+			return nil, err
+		}
+	} else if hasMethod {
+		if err := validateFieldResolver(method, field.StructField.Type); err != nil {
+			return nil, err
+		}
+	} else {
 		return nil, nil
 	}
 
@@ -72,7 +78,16 @@ func (r *Resolver) Field() *Field {
 	return r.field
 }
 
+func (r *Resolver) ReturnsThunk() bool {
+	return r.Type.Out(0).Kind() == reflect.Func
+}
+
 func getResolverArgumentSignature(method reflect.Method) []ResolverArgType {
+	// method doesn't exis
+	if method.Type == nil {
+		return []ResolverArgType{}
+	}
+
 	var (
 		arguments        = []ResolverArgType{}
 		contextInterface = reflect.TypeOf((*context.Context)(nil)).Elem()
@@ -97,12 +112,9 @@ func getResolverArgumentSignature(method reflect.Method) []ResolverArgType {
 	return arguments
 }
 
-func validateFieldResolver(method reflect.Method, returnType reflect.Type) error {
+func validateResolverArguments(method reflect.Method) error {
 	var (
-		funcType       = method.Func.Type()
-		errorInterface = reflect.TypeOf((*error)(nil)).Elem()
-
-		outCount = funcType.NumOut()
+		funcType = method.Func.Type()
 		inCount  = funcType.NumIn()
 
 		structType          = funcType.In(0)
@@ -118,27 +130,6 @@ func validateFieldResolver(method reflect.Method, returnType reflect.Type) error
 			{},
 		}
 	)
-
-	if outCount != 2 {
-		return fmt.Errorf(
-			"return type of (%s, error) was expected for resolver %s on struct %s, got %s",
-			returnType.Name(),
-			method.Name,
-			structType.Name(),
-			funcType.In(1),
-		)
-	}
-
-	if method.Type.Out(0) != returnType || !method.Type.Out(1).Implements(errorInterface) {
-		return fmt.Errorf(
-			"return type of (%s, error) was expected for resolver %s on struct %s, got (%s, %s)",
-			returnType.String(),
-			method.Name,
-			structType.Name(),
-			funcType.Out(0).String(),
-			funcType.Out(1).String(),
-		)
-	}
 
 	if inCount > 4 {
 		return fmt.Errorf(
@@ -169,6 +160,113 @@ func validateFieldResolver(method reflect.Method, returnType reflect.Type) error
 			method.Name,
 			structType.Name(),
 		)
+	}
+
+	return nil
+}
+
+func validateResolverOutput(method reflect.Method, returnType reflect.Type) error {
+	var (
+		funcType       = method.Func.Type()
+		errorInterface = reflect.TypeOf((*error)(nil)).Elem()
+		outCount       = funcType.NumOut()
+		structType     = funcType.In(0)
+	)
+
+	err := func() error {
+		returnMsg := ""
+		for i := 0; i < outCount; i++ {
+			returnMsg += funcType.Out(i).String() + ", "
+		}
+		returnMsg = returnMsg[:len(returnMsg)-2]
+
+		return fmt.Errorf(
+			"one of the below return types was expect for resolver %s on struct %s, got (%s)\n"+
+				"(%s, error)\n"+
+				"(func() (%s, error), error)",
+			method.Name,
+			structType.Name(),
+			returnMsg,
+			returnType,
+			returnType,
+		)
+	}()
+
+	if outCount != 2 || !method.Type.Out(1).Implements(errorInterface) {
+		return err
+	}
+
+	actualReturnType := method.Type.Out(0)
+
+	if actualReturnType.Kind() == reflect.Func {
+		returnMethod := method
+		returnMethod.Type = actualReturnType
+
+		if subErr := validateFieldSubscriber(returnMethod, returnType); subErr != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	if actualReturnType != returnType {
+		return err
+	}
+
+	return nil
+}
+
+func validateSubscriberOutput(method reflect.Method, returnType reflect.Type) error {
+	var (
+		funcType       = method.Func.Type()
+		errorInterface = reflect.TypeOf((*error)(nil)).Elem()
+		outCount       = funcType.NumOut()
+		structType     = funcType.In(0)
+	)
+
+	if outCount != 2 {
+		return fmt.Errorf(
+			"return type of (%s, error) was expected for resolver %s on struct %s, got %s",
+			returnType.Name(),
+			method.Name,
+			structType.Name(),
+			funcType.In(1),
+		)
+	}
+
+	if method.Type.Out(0) != returnType || !method.Type.Out(1).Implements(errorInterface) {
+		return fmt.Errorf(
+			"return type of (%s, error) was expected for resolver %s on struct %s, got (%s, %s)",
+			returnType.String(),
+			method.Name,
+			structType.Name(),
+			funcType.Out(0).String(),
+			funcType.Out(1).String(),
+		)
+	}
+
+	return nil
+}
+
+func validateFieldResolver(method reflect.Method, returnType reflect.Type) error {
+	if err := validateResolverArguments(method); err != nil {
+		return err
+	}
+
+	if err := validateResolverOutput(method, returnType); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateFieldSubscriber(method reflect.Method, returnType reflect.Type) error {
+	if err := validateResolverArguments(method); err != nil {
+		return err
+	}
+
+	if err := validateSubscriberOutput(method, returnType); err != nil {
+		return err
 	}
 
 	return nil

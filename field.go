@@ -15,8 +15,12 @@ func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field 
 
 	// default resolver
 	resolver = func(p graphql.ResolveParams) (interface{}, error) {
-		value := reflect.ValueOf(p.Source).FieldByName(parserField.Name)
-		return value.Interface(), nil
+		value := reflect.ValueOf(p.Source)
+		if value.Type().Kind() == reflect.Ptr {
+			value = value.Elem()
+		}
+
+		return value.FieldByName(parserField.Name).Interface(), nil
 	}
 
 	if parserField.Subscriber() != nil {
@@ -28,7 +32,7 @@ func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field 
 
 	} else if parserField.Resolver() != nil {
 		// custom resolver
-		resolver = buildResolver(parserField.Resolver(), parserField.Type())
+		resolver = buildResolver(parserField.Resolver())
 	}
 
 	args := graphql.FieldConfigArgument{}
