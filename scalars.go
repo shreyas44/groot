@@ -12,14 +12,10 @@ import (
 
 type ScalarType = parser.ScalarType
 
-type (
-	StringID string
-	IntID    int
-)
+type ID string
 
 var builtinScalars = map[reflect.Type]*graphql.Scalar{
-	reflect.TypeOf(IntID(0)):     graphql.ID,
-	reflect.TypeOf(StringID("")): graphql.ID,
+	reflect.TypeOf(ID("")):       graphql.ID,
 	reflect.TypeOf(int(0)):       graphql.Int,
 	reflect.TypeOf(int8(0)):      graphql.Int,
 	reflect.TypeOf(int16(0)):     graphql.Int,

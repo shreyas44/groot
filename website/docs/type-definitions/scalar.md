@@ -6,7 +6,7 @@ You can use any of the below Go types to represent the corresponding GraphQL sca
 2. `Float` - `float32, float64`
 3. `Boolean` - `bool`
 4. `String` - `string`
-5. `ID` - `groot.StringID, groot.IntID`
+5. `ID` - `groot.ID`
 
 _Note, `int64, uint32, uint64` are not supported since the built in Int type in GraphQL is a 32 bit integer._
 
