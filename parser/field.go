@@ -18,7 +18,7 @@ type Field struct {
 }
 
 func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
-	if field.Tag.Get("groot_ignore") == "true" {
+	if field.Tag.Get("json") == "-" || !field.IsExported() {
 		return nil, nil
 	}
 
