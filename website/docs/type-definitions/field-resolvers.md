@@ -15,7 +15,8 @@ type Post struct {
 
 ### Resolver Method
 
-The resolver for a field is defined the method on the struct with name `Resolve{field-name}`. The resolvers return type must be `({FieldType}, error)`, and the method should be defined on the value struct (`Post`) and not the pointer of the sturct (`*Post`).
+The resolver for a field is defined the method on the struct with name `Resolve{field-name}`.
+The resolvers return type must be `(FieldType, error)` if you want to return a value, or if you want to return a thunk (a function returned by a function), it must be `(func() (FieldType, error), error)`. The method should be defined on the value struct (`Post`) and not the pointer of the struct (`*Post`).
 
 The method signature of the resolver can be any of the following:
 
@@ -31,10 +32,19 @@ The method signature of the resolver can be any of the following:
 For example, we can define a resolver for `Author` like below:
 
 ```go
-func (post Post) ResolveAuthor(ctx context.Context) (User, error) {
+func (post Post) ResolveAuthor() (User, error) {
+	return db.GetUser(post.AuthorID)
 	loader := loader.UserLoaderFromCtx(ctx)
 	user, err := loader.Load(post.AuthorID)
 	return user, err
+}
+
+// Returning a thunk with dataloader
+func (post Post) ResolveAuthor() (func() (User, error), error) {
+	thunk := userLoader.Load(post.AuthorID)
+	return func() (User, error) {
+		return thunk(), nil
+	}, nil
 }
 ```
 
