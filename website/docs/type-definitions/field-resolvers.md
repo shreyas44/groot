@@ -9,7 +9,7 @@ type Post struct {
 	Author   User      `json:"author"`
 	Comments []Comment `json:"comments"`
 	// this field will not be in the graphql schema
-	AuthorID string    `groot_ignore:"true"`
+	AuthorID string    `json:"-"`
 }
 ```
 

@@ -45,10 +45,11 @@ type User struct {
 
 ### Ignoring Fields
 
-Ignoring fields allows us to pass values down the resolution tree without exposing them in the API. To ignore a field, define the struct tag `groot_ignore` with the value set to `true`.
+Ignoring fields allows us to pass values down the resolution tree without exposing them in the API. To ignore a field, you can either not export the field, or set the `json` struct tag to `-`.
 
 ```go
 type User struct {
-	Password string `groot_ignore:"true"`
+	otherPassword string
+	Password      string `json:"-"`
 }
 ```

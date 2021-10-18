@@ -15,6 +15,10 @@ type Argument struct {
 }
 
 func NewArgument(input *Input, field reflect.StructField) (*Argument, error) {
+	if field.Tag.Get("json") == "-" || !field.IsExported() {
+		return nil, nil
+	}
+
 	argument := &Argument{
 		StructField:  field,
 		input:        input,
