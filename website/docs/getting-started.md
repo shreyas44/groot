@@ -39,19 +39,19 @@ We can define the `User` and `Post` objects as regular structs.
 
 ```go
 type User struct {
-	ID    string  `json:"id"`
-	Name  string  `json:"name"`
-	Email string  `json:"email"`
+	ID    groot.ID `json:"id"`
+	Name  string   `json:"name"`
+	Email string   `json:"email"`
 	// we use a pointer to make the field nullable
-	Posts *[]Post `json:"posts"`
+	Posts *[]Post  `json:"posts"`
 }
 
 type Post struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	Author    User   `json:"author"`
-	Timestamp int64  `json:"timestamp"`
+	ID        groot.ID `json:"id"`
+	Title     string   `json:"title"`
+	Body      string   `json:"body"`
+	Author    User     `json:"author"`
+	Timestamp int64    `json:"timestamp"`
 }
 ```
 
@@ -85,7 +85,7 @@ type Query struct {
 }
 
 type IDArgs struct {
-	ID string `json:"id"`
+	ID groot.ID `json:"id"`
 }
 
 func (q Query) ResolveUser(args IDArgs) (*User, error) {

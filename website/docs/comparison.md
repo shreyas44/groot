@@ -161,18 +161,18 @@ func (u UserType) Values() []string {
 }
 
 type User struct {
-	ID      string   `json:"id"`
+	ID      groot.ID `json:"id"`
 	Name    string   `json:"name"`
 	Type    UserType `json:"type"`
 	OldType UserType `json:"oldType" deprecate:"Old Field"`
 }
 
 type Post struct {
-	ID        string  `json:"id"`
+	ID        groot.ID `json:"id"`
 	// you can use a pointer to mark the field as nullable
-	Body      *string `json:"body"`
-	Timestamp int     `json:"timestamp" description:"When the post was posted"`
-	Author    User    `json:"author"`
+	Body      *string  `json:"body"`
+	Timestamp int      `json:"timestamp" description:"When the post was posted"`
+	Author    User     `json:"author"`
 }
 
 type Query struct {
@@ -181,7 +181,7 @@ type Query struct {
 }
 
 type IdArgs struct {
-	ID string `json:"id"`
+	ID groot.ID `json:"id"`
 }
 
 func (query Query) ResolveUser(args IdArgs) (User, error) {

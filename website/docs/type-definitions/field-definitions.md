@@ -23,7 +23,7 @@ To add a description, define the struct tag `description` with the value being t
 
 ```go
 type User struct {
-	ID string `json:"id" description:"id of user"`
+	ID groot.ID `json:"id" description:"id of user"`
 }
 ```
 
@@ -39,7 +39,7 @@ To deprecate a field, define the struct tag `deprecate` with the value being the
 
 ```go
 type User struct {
-	OldID string `json:"oldId" deprecate:"old field"`
+	OldID groot.ID `json:"oldId" deprecate:"old field"`
 }
 ```
 
