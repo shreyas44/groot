@@ -4,7 +4,7 @@ We'll be working with the below `Post` struct for this section.
 
 ```go
 type Post struct {
-	ID       string    `json:"id"`
+	ID       groot.ID  `json:"id"`
 	Title    string    `json:"title"`
 	Author   User      `json:"author"`
 	Comments []Comment `json:"comments"`

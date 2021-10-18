@@ -16,8 +16,8 @@ Go is statically typed, and GraphQL is type safe, which means we don't need to a
 
 ```go
 type User struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID   groot.ID `json:"id"`
+	Name string   `json:"name"`
 }
 ```
 
