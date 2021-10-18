@@ -52,10 +52,6 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 			return nil, err
 		}
 
-		if err := validateFieldResolver(subscriber.Method, reflect.ChanOf(reflect.RecvDir, field.Type)); err != nil {
-			return nil, err
-		}
-
 		if arguments, err = getResolverArguments(subscriber); err != nil {
 			return nil, err
 		}
@@ -65,10 +61,6 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 		}
 
 		if resolver != nil {
-			if err := validateFieldResolver(resolver.Method, field.Type); err != nil {
-				return nil, err
-			}
-
 			arguments, err = getResolverArguments(resolver)
 			if err != nil {
 				return nil, err

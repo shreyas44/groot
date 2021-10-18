@@ -8,14 +8,19 @@ import (
 	"github.com/shreyas44/groot/parser"
 )
 
-func buildResolver(resolver *parser.Resolver, parserType parser.Type) graphql.FieldResolveFn {
-	var union *parser.Union
-	var isUnion bool
+func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
+	parserReturnType := resolver.Field().Type()
 
-	if nullable, isNullable := parserType.(*parser.Nullable); isNullable {
-		union, isUnion = nullable.Element().(*parser.Union)
-	} else {
-		union, isUnion = parserType.(*parser.Union)
+	if !resolver.ReturnsThunk() {
+		return func(p graphql.ResolveParams) (interface{}, error) {
+			args, err := makeResolverArgs(resolver, p)
+			if err != nil {
+				return nil, err
+			}
+
+			response := resolver.Func.Call(args)
+			return makeResolverOutput(p, parserReturnType, response)
+		}
 	}
 
 	return func(p graphql.ResolveParams) (interface{}, error) {
@@ -25,36 +30,19 @@ func buildResolver(resolver *parser.Resolver, parserType parser.Type) graphql.Fi
 		}
 
 		response := resolver.Func.Call(args)
-		value, resErr := response[0], response[1]
-
-		if isUnion {
-			p := graphql.ResolveTypeParams{
-				Value:   value.Interface(),
-				Info:    p.Info,
-				Context: p.Context,
-			}
-
-			value = resolveUnionValue(union, p)
+		thunk, resErr := response[0], response[1]
+		if !resErr.IsNil() {
+			return nil, resErr.Interface().(error)
 		}
 
-		if resErr.IsNil() {
-			return value.Interface(), nil
-		}
-
-		return value.Interface(), resErr.Interface().(error)
+		return func() (interface{}, error) {
+			output := thunk.Call([]reflect.Value{})
+			return makeResolverOutput(p, parserReturnType, output)
+		}, nil
 	}
 }
 
 func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.Type) graphql.FieldResolveFn {
-	var union *parser.Union
-	var isUnion bool
-
-	if nullable, isNullable := parserType.(*parser.Nullable); isNullable {
-		union, isUnion = nullable.Element().(*parser.Union)
-	} else {
-		union, isUnion = parserType.(*parser.Union)
-	}
-
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		args, err := makeResolverArgs(subscriber, p)
 		if err != nil {
@@ -91,17 +79,9 @@ func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.
 
 		go func() {
 			for value := range valueCh {
-				if isUnion {
-					p := graphql.ResolveTypeParams{
-						Value:   value.Interface(),
-						Info:    p.Info,
-						Context: p.Context,
-					}
-
-					value = resolveUnionValue(union, p)
-				}
-
-				ch <- value.Interface()
+				response := []reflect.Value{value, reflect.ValueOf((*error)(nil))}
+				output, _ := makeResolverOutput(p, parserType, response)
+				ch <- output
 			}
 
 			close(ch)
@@ -113,21 +93,27 @@ func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.
 
 func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]reflect.Value, error) {
 	var (
-		funcType   = resolver.Func.Type()
-		structType = funcType.In(0)
-		args       = []reflect.Value{}
+		funcType = resolver.Func.Type()
+		args     = []reflect.Value{}
 	)
 
 	// if it's a map, it's a root query
 	if _, isMap := p.Source.(map[string]interface{}); isMap {
 		args = append(args, reflect.Indirect(reflect.New(resolver.Type.In(0))))
 	} else {
-		args = append(args, reflect.ValueOf(p.Source).Convert(structType))
+		value := reflect.ValueOf(p.Source)
+		if value.Kind() == reflect.Ptr {
+			value = value.Elem()
+		}
+
+		args = append(args, value)
 	}
 
 	for _, arg := range resolver.ArgsSignature() {
 		switch arg {
 		case parser.ResolverArgInput:
+			// TODO: figure out a better way to do this instead of marshalling and unmarshalling
+
 			structInterface := reflect.New(funcType.In(1)).Interface()
 			jsonBytes, err := json.Marshal(p.Args)
 			if err != nil {
@@ -144,4 +130,32 @@ func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]ref
 	}
 
 	return args, nil
+}
+
+func makeResolverOutput(p graphql.ResolveParams, parserType parser.Type, response []reflect.Value) (interface{}, error) {
+	var union *parser.Union
+	var isUnion bool
+	value, resErr := response[0], response[1]
+
+	if nullable, isNullable := parserType.(*parser.Nullable); isNullable {
+		union, isUnion = nullable.Element().(*parser.Union)
+	} else {
+		union, isUnion = parserType.(*parser.Union)
+	}
+
+	if isUnion {
+		p := graphql.ResolveTypeParams{
+			Value:   value.Interface(),
+			Info:    p.Info,
+			Context: p.Context,
+		}
+
+		value = resolveUnionValue(union, p)
+	}
+
+	if resErr.IsNil() {
+		return value.Interface(), nil
+	}
+
+	return value.Interface(), resErr.Interface().(error)
 }
