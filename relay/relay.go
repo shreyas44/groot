@@ -8,12 +8,12 @@ import (
 
 type NodeDefinition struct {
 	groot.InterfaceType
-	ID groot.StringID `json:"id"`
+	ID groot.ID `json:"id"`
 }
 
 func NewNodeDefinition(id string) NodeDefinition {
 	return NodeDefinition{
-		ID: groot.StringID(id),
+		ID: groot.ID(id),
 	}
 }
 
