@@ -20,6 +20,10 @@ func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field 
 			value = value.Elem()
 		}
 
+		if _, ok := parserField.Type().(*parser.Enum); ok {
+			return value.FieldByName(parserField.Name).Convert(reflect.TypeOf("")).Interface(), nil
+		}
+
 		return value.FieldByName(parserField.Name).Interface(), nil
 	}
 
