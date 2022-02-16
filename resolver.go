@@ -125,7 +125,7 @@ func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]ref
 			}
 
 			json.Unmarshal(jsonBytes, &structInterface)
-			if i := structInterface.(InputValidator); i != nil {
+			if i, ok := structInterface.(InputValidator); ok {
 				if err := i.Validate(); err != nil {
 					return nil, err
 				}
