@@ -8,6 +8,10 @@ import (
 	"github.com/shreyas44/groot/parser"
 )
 
+type InputValidator interface {
+	Validate() error
+}
+
 func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
 	parserReturnType := resolver.Field().Type()
 
@@ -121,6 +125,12 @@ func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]ref
 			}
 
 			json.Unmarshal(jsonBytes, &structInterface)
+			if i := structInterface.(InputValidator); i != nil {
+				if err := i.Validate(); err != nil {
+					return nil, err
+				}
+			}
+
 			args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
 		case parser.ResolverArgContext:
 			args = append(args, reflect.ValueOf(p.Context))
