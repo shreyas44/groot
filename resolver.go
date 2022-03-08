@@ -2,6 +2,7 @@ package groot
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
@@ -22,8 +23,9 @@ func newInputArgsValidator(input *parser.Input) inputArgsValidator {
 	if validator := input.Validator(); validator != nil {
 		validator := func(v reflect.Value) error {
 			res := validator.ReflectMethod().Func.Call([]reflect.Value{v})
-			if err := res[0].Interface().(error); err != nil {
-				return err
+			resErr := res[0]
+			if !resErr.IsNil() {
+				return resErr.Interface().(error)
 			}
 
 			return nil
@@ -34,13 +36,17 @@ func newInputArgsValidator(input *parser.Input) inputArgsValidator {
 
 	for _, arg := range input.Arguments() {
 		if validator := arg.Validator(); validator != nil {
+			fmt.Println(arg, arg.Validator())
 			validator := func(v reflect.Value) error {
-				field := v.FieldByName(arg.Type().ReflectType().Name())
-				values := []reflect.Value{v, field}
-				res := validator.ReflectMethod().Func.Call(values)
+				var (
+					field  = v.FieldByName(arg.StructField().Name)
+					values = []reflect.Value{v, field}
+					res    = validator.ReflectMethod().Func.Call(values)
+					resErr = res[0]
+				)
 
-				if err := res[0].Interface().(error); err != nil {
-					return err
+				if !resErr.IsNil() {
+					return resErr.Interface().(error)
 				}
 
 				return nil

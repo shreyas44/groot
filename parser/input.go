@@ -38,6 +38,10 @@ func NewInput(t reflect.Type) (*Input, error) {
 }
 
 func (i *Input) Arguments() []*Argument {
+	if i == nil {
+		return []*Argument{}
+	}
+
 	return i.arguments
 }
 

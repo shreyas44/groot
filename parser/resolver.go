@@ -279,7 +279,7 @@ func validateFieldSubscriber(method reflect.Method, returnType reflect.Type) err
 func getResolverArgsInput(resolver *Resolver) (*Input, error) {
 	signature := resolver.ArgsSignature()
 	if len(signature) == 0 || signature[0] != ResolverArgInput {
-		return &Input{}, nil
+		return nil, nil
 	}
 
 	reflectType := resolver.reflectMethod.Type.In(1)

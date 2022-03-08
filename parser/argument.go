@@ -75,6 +75,10 @@ func (arg *Argument) Validator() *ArgumentValidator {
 	return arg.validator
 }
 
+func (arg *Argument) StructField() reflect.StructField {
+	return arg.structField
+}
+
 func validateArgumentType(arg *Argument) error {
 	kind, err := getTypeKind(arg.structField.Type)
 	if err != nil {
