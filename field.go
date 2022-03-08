@@ -27,10 +27,7 @@ func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field 
 		Resolve:           newFieldResolver(parserField),
 		DeprecationReason: parserField.DeprecationReason(),
 		Args:              args,
-	}
-
-	if subscribe != nil {
-		field.Subscribe = subscribe
+		Subscribe:         subscribe,
 	}
 
 	return field
