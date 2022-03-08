@@ -276,10 +276,10 @@ func validateFieldSubscriber(method reflect.Method, returnType reflect.Type) err
 	return nil
 }
 
-func getResolverArguments(resolver *Resolver) ([]*Argument, error) {
+func getResolverArgsInput(resolver *Resolver) (*Input, error) {
 	signature := resolver.ArgsSignature()
 	if len(signature) == 0 || signature[0] != ResolverArgInput {
-		return []*Argument{}, nil
+		return nil, nil
 	}
 
 	reflectType := resolver.reflectMethod.Type.In(1)
@@ -290,10 +290,5 @@ func getResolverArguments(resolver *Resolver) ([]*Argument, error) {
 		return nil, err
 	}
 
-	args, err := getArguments(input.(*Input), reflectType)
-	if err != nil {
-		return nil, err
-	}
-
-	return args, nil
+	return input.(*Input), nil
 }

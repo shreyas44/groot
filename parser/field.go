@@ -7,9 +7,9 @@ import (
 
 type Field struct {
 	structField       reflect.StructField
-	fieldType         Type
+	type_             Type
 	object            TypeWithFields
-	arguments         []*Argument
+	argsInput         *Input
 	resolver          *Resolver
 	subscriber        *Subscriber
 	jsonName          string
@@ -25,7 +25,7 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 	var (
 		subscriber  *Subscriber
 		resolver    *Resolver
-		arguments   []*Argument
+		argsInput   *Input
 		fieldType   Type
 		err         error
 		objectField = &Field{
@@ -42,7 +42,7 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 		return nil, err
 	}
 
-	objectField.fieldType = fieldType
+	objectField.type_ = fieldType
 	if err := validateFieldType(t.ReflectType(), field); err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 			return nil, err
 		}
 
-		if arguments, err = getResolverArguments(subscriber); err != nil {
+		if argsInput, err = getResolverArgsInput(subscriber); err != nil {
 			return nil, err
 		}
 	} else {
@@ -61,7 +61,7 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 		}
 
 		if resolver != nil {
-			arguments, err = getResolverArguments(resolver)
+			argsInput, err = getResolverArgsInput(resolver)
 			if err != nil {
 				return nil, err
 			}
@@ -70,8 +70,8 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 
 	objectField.resolver = resolver
 	objectField.subscriber = subscriber
-	objectField.arguments = arguments
-	objectField.fieldType = fieldType
+	objectField.argsInput = argsInput
+	objectField.type_ = fieldType
 	return objectField, nil
 }
 
@@ -79,8 +79,8 @@ func (f *Field) Object() TypeWithFields {
 	return f.object
 }
 
-func (f *Field) Arguments() []*Argument {
-	return f.arguments
+func (f *Field) ArgsInput() *Input {
+	return f.argsInput
 }
 
 func (f *Field) Resolver() *Resolver {
@@ -92,7 +92,7 @@ func (f *Field) Subscriber() *Subscriber {
 }
 
 func (f *Field) Type() Type {
-	return f.fieldType
+	return f.type_
 }
 
 func (f *Field) Description() string {
