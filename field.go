@@ -6,10 +6,8 @@ import (
 )
 
 func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field {
-	var (
-		subscribe   fieldSubscriber
-		graphqlType = getOrCreateType(parserField.Type(), builder)
-	)
+	var subscribe fieldSubscriber
+	graphqlType := getOrCreateType(parserField.Type(), builder)
 
 	if parserField.Subscriber() != nil {
 		subscribe = newFieldSubscriber(parserField.Subscriber(), parserField.Type())
