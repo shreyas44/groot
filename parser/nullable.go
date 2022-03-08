@@ -5,8 +5,8 @@ import (
 )
 
 type Nullable struct {
-	reflect.Type
-	element Type
+	reflectType reflect.Type
+	element     Type
 }
 
 func NewNullable(t reflect.Type, isArgument bool) (*Nullable, error) {
@@ -36,5 +36,5 @@ func (n *Nullable) Element() Type {
 }
 
 func (n *Nullable) ReflectType() reflect.Type {
-	return n.Type
+	return n.reflectType
 }

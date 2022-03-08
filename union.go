@@ -20,7 +20,7 @@ func NewUnion(parserUnion *parser.Union, builder *SchemaBuilder) *graphql.Union 
 
 	// TODO: description
 	union := graphql.NewUnion(graphql.UnionConfig{
-		Name:  parserUnion.Name(),
+		Name:  parserUnion.ReflectType().Name(),
 		Types: placeholderTypes,
 		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
 			valueType := reflect.TypeOf(p.Value)
@@ -41,7 +41,7 @@ func NewUnion(parserUnion *parser.Union, builder *SchemaBuilder) *graphql.Union 
 
 func resolveUnionValue(union *parser.Union, p graphql.ResolveTypeParams) reflect.Value {
 	for _, member := range union.Members() {
-		name := member.Name()
+		name := member.ReflectType().Name()
 		field := reflect.ValueOf(p.Value).FieldByName(name)
 
 		if !field.IsZero() {
@@ -49,6 +49,6 @@ func resolveUnionValue(union *parser.Union, p graphql.ResolveTypeParams) reflect
 		}
 	}
 
-	firstValue := reflect.ValueOf(p.Value).FieldByName(union.Members()[0].Name())
+	firstValue := reflect.ValueOf(p.Value).FieldByName(union.Members()[0].ReflectType().Name())
 	return firstValue
 }

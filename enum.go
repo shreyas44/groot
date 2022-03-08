@@ -10,8 +10,8 @@ import (
 type EnumType = parser.EnumType
 
 func NewEnum(t *parser.Enum, builder *SchemaBuilder) *graphql.Enum {
-	name := t.Name()
-	enumType := reflect.New(t.Type).Interface().(EnumType)
+	name := t.ReflectType().Name()
+	enumType := reflect.New(t.ReflectType()).Interface().(EnumType)
 
 	values := graphql.EnumValueConfigMap{}
 	for _, value := range enumType.Values() {

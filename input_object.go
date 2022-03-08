@@ -8,7 +8,7 @@ import (
 func NewInputObject(input *parser.Input, builder *SchemaBuilder) *graphql.InputObject {
 	// TODO: description
 	object := graphql.NewInputObject(graphql.InputObjectConfig{
-		Name:   input.Name(),
+		Name:   input.ReflectType().Name(),
 		Fields: graphql.InputObjectConfigFieldMap{},
 	})
 

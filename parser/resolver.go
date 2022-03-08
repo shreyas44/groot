@@ -23,16 +23,16 @@ const (
 )
 
 type Resolver struct {
-	reflect.Method
-	field     *Field
-	signature []ResolverArgType
+	reflectMethod reflect.Method
+	field         *Field
+	signature     []ResolverArgType
 }
 
 func NewResolver(field *Field) (*Resolver, error) {
 	var (
 		methodName string
-		fieldName  = field.Name
-		object     = field.Object()
+		fieldName  = field.JSONName()
+		object     = field.Object().ReflectType()
 	)
 
 	if object.Name() == "Subscription" {
@@ -52,11 +52,11 @@ func NewResolver(field *Field) (*Resolver, error) {
 			)
 		}
 
-		if err := validateFieldSubscriber(method, reflect.ChanOf(reflect.RecvDir, field.StructField.Type)); err != nil {
+		if err := validateFieldSubscriber(method, reflect.ChanOf(reflect.RecvDir, field.structField.Type)); err != nil {
 			return nil, err
 		}
 	} else if hasMethod {
-		if err := validateFieldResolver(method, field.StructField.Type); err != nil {
+		if err := validateFieldResolver(method, field.structField.Type); err != nil {
 			return nil, err
 		}
 	} else {
@@ -64,9 +64,9 @@ func NewResolver(field *Field) (*Resolver, error) {
 	}
 
 	return &Resolver{
-		Method:    method,
-		field:     field,
-		signature: getResolverArgumentSignature(method),
+		reflectMethod: method,
+		field:         field,
+		signature:     getResolverArgumentSignature(method),
 	}, nil
 }
 
@@ -79,7 +79,11 @@ func (r *Resolver) Field() *Field {
 }
 
 func (r *Resolver) ReturnsThunk() bool {
-	return r.Type.Out(0).Kind() == reflect.Func
+	return r.reflectMethod.Type.Out(0).Kind() == reflect.Func
+}
+
+func (r *Resolver) ReflectMethod() reflect.Method {
+	return r.reflectMethod
 }
 
 func getResolverArgumentSignature(method reflect.Method) []ResolverArgType {
@@ -278,7 +282,7 @@ func getResolverArguments(resolver *Resolver) ([]*Argument, error) {
 		return []*Argument{}, nil
 	}
 
-	reflectType := resolver.Method.Type.In(1)
+	reflectType := resolver.reflectMethod.Type.In(1)
 
 	// this input type will not be created in the schema
 	input, err := getOrCreateArgumentType(reflectType)

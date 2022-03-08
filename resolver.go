@@ -14,6 +14,7 @@ type InputValidator interface {
 
 func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
 	parserReturnType := resolver.Field().Type()
+	resolverFunc := resolver.ReflectMethod().Func
 
 	if !resolver.ReturnsThunk() {
 		return func(p graphql.ResolveParams) (interface{}, error) {
@@ -22,7 +23,7 @@ func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
 				return nil, err
 			}
 
-			response := resolver.Func.Call(args)
+			response := resolverFunc.Call(args)
 			return makeResolverOutput(p, parserReturnType, response)
 		}
 	}
@@ -33,7 +34,7 @@ func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
 			return nil, err
 		}
 
-		response := resolver.Func.Call(args)
+		response := resolverFunc.Call(args)
 		thunk, resErr := response[0], response[1]
 		if !resErr.IsNil() {
 			return nil, resErr.Interface().(error)
@@ -47,13 +48,15 @@ func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
 }
 
 func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.Type) graphql.FieldResolveFn {
+	subscriberFunc := subscriber.ReflectMethod().Func
+
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		args, err := makeResolverArgs(subscriber, p)
 		if err != nil {
 			return nil, err
 		}
 
-		response := subscriber.Func.Call(args)
+		response := subscriberFunc.Call(args)
 		resCh, resErr := response[0], response[1]
 
 		if !resErr.IsNil() {
@@ -97,13 +100,15 @@ func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.
 
 func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]reflect.Value, error) {
 	var (
-		funcType = resolver.Func.Type()
-		args     = []reflect.Value{}
+		resolverMethod = resolver.ReflectMethod()
+		resolverFunc   = resolverMethod.Func
+		funcType       = resolverFunc.Type()
+		args           = []reflect.Value{}
 	)
 
 	// if it's a map, it's a root query
 	if _, isMap := p.Source.(map[string]interface{}); isMap {
-		args = append(args, reflect.Indirect(reflect.New(resolver.Type.In(0))))
+		args = append(args, reflect.Indirect(reflect.New(resolverMethod.Type.In(0))))
 	} else {
 		value := reflect.ValueOf(p.Source)
 		if value.Kind() == reflect.Ptr {

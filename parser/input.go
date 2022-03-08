@@ -5,8 +5,8 @@ import (
 )
 
 type Input struct {
-	reflect.Type
-	arguments []*Argument
+	reflectType reflect.Type
+	arguments   []*Argument
 }
 
 func NewInput(t reflect.Type) (*Input, error) {
@@ -15,8 +15,8 @@ func NewInput(t reflect.Type) (*Input, error) {
 	}
 
 	input := &Input{
-		Type:      t,
-		arguments: []*Argument{},
+		reflectType: t,
+		arguments:   []*Argument{},
 	}
 
 	cache.set(t, input)
@@ -35,7 +35,7 @@ func (i *Input) Arguments() []*Argument {
 }
 
 func (i *Input) ReflectType() reflect.Type {
-	return i.Type
+	return i.reflectType
 }
 
 func getArguments(t *Input, reflectType reflect.Type) ([]*Argument, error) {

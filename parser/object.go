@@ -3,16 +3,16 @@ package parser
 import "reflect"
 
 type Object struct {
-	reflect.Type
-	fields     []*Field
-	interfaces []*Interface
+	reflectType reflect.Type
+	fields      []*Field
+	interfaces  []*Interface
 }
 
 func NewObject(t reflect.Type) (*Object, error) {
 	object := &Object{
-		Type:       t,
-		fields:     []*Field{},
-		interfaces: []*Interface{},
+		reflectType: t,
+		fields:      []*Field{},
+		interfaces:  []*Interface{},
 	}
 
 	if err := validateTypeKind(t, KindObject); err != nil {
@@ -46,7 +46,7 @@ func (o *Object) Interfaces() []*Interface {
 }
 
 func (o *Object) ReflectType() reflect.Type {
-	return o.Type
+	return o.reflectType
 }
 
 func getFields(t TypeWithFields, reflectType reflect.Type) ([]*Field, error) {
@@ -81,8 +81,8 @@ func getFields(t TypeWithFields, reflectType reflect.Type) ([]*Field, error) {
 func getInterfaces(object *Object) ([]*Interface, error) {
 	interfaces := []*Interface{}
 
-	for i := 0; i < object.Type.NumField(); i++ {
-		field := object.Type.Field(i)
+	for i := 0; i < object.reflectType.NumField(); i++ {
+		field := object.reflectType.Field(i)
 
 		if field.Anonymous {
 			interfaceType, err := getOrCreateType(field.Type)

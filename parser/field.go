@@ -6,7 +6,7 @@ import (
 )
 
 type Field struct {
-	reflect.StructField
+	structField       reflect.StructField
 	fieldType         Type
 	object            TypeWithFields
 	arguments         []*Argument
@@ -29,7 +29,7 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 		fieldType   Type
 		err         error
 		objectField = &Field{
-			StructField:       field,
+			structField:       field,
 			object:            t,
 			description:       field.Tag.Get("description"),
 			jsonName:          field.Tag.Get("json"),
@@ -47,7 +47,7 @@ func NewField(t TypeWithFields, field reflect.StructField) (*Field, error) {
 		return nil, err
 	}
 
-	if t.Name() == "Subscription" {
+	if t.ReflectType().Name() == "Subscription" {
 		if subscriber, err = NewResolver(objectField); err != nil {
 			return nil, err
 		}
@@ -101,10 +101,14 @@ func (f *Field) Description() string {
 
 func (f *Field) JSONName() string {
 	if f.jsonName == "" {
-		return f.Name
+		return f.structField.Name
 	}
 
 	return f.jsonName
+}
+
+func (f *Field) StructField() reflect.StructField {
+	return f.structField
 }
 
 func (f *Field) DeprecationReason() string {

@@ -6,7 +6,7 @@ import (
 )
 
 type Argument struct {
-	reflect.StructField
+	structField  reflect.StructField
 	input        *Input
 	type_        Type
 	jsonName     string
@@ -20,7 +20,7 @@ func NewArgument(input *Input, field reflect.StructField) (*Argument, error) {
 	}
 
 	argument := &Argument{
-		StructField:  field,
+		structField:  field,
 		input:        input,
 		description:  field.Tag.Get("description"),
 		jsonName:     field.Tag.Get("json"),
@@ -57,7 +57,7 @@ func (arg *Argument) JSONName() string {
 		return arg.jsonName
 	}
 
-	return arg.Name
+	return arg.structField.Name
 }
 
 func (arg *Argument) DefaultValue() string {
@@ -67,7 +67,7 @@ func (arg *Argument) DefaultValue() string {
 func (arg *Argument) ImplementsType() {}
 
 func validateArgumentType(arg *Argument) error {
-	kind, err := getTypeKind(arg.Type)
+	kind, err := getTypeKind(arg.structField.Type)
 	if err != nil {
 		return err
 	}
@@ -76,9 +76,9 @@ func validateArgumentType(arg *Argument) error {
 	case KindInterface, KindUnion, KindInterfaceDefinition:
 		return fmt.Errorf(
 			"argument type %s not supported for field %s on struct %s \nif you think this is a mistake please open an issue at github.com/shreyas44/groot",
-			arg.StructField.Type.Name(),
-			arg.StructField.Name,
-			arg.Input().Name(),
+			arg.structField.Type.Name(),
+			arg.structField.Name,
+			arg.Input().reflectType.Name(),
 		)
 	}
 

@@ -11,7 +11,7 @@ func NewObject(parserObject *parser.Object, builder *SchemaBuilder) *graphql.Obj
 	fields := graphql.Fields{}
 
 	object := graphql.NewObject(graphql.ObjectConfig{
-		Name:       parserObject.Name(),
+		Name:       parserObject.ReflectType().Name(),
 		Interfaces: interfaces,
 		Fields:     fields,
 	})
