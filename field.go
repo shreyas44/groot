@@ -19,7 +19,7 @@ func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field 
 			return p.Source, nil
 		}
 
-	} else if parserField.Resolver() != nil {
+	} else {
 		resolver = newFieldResolver(parserField)
 	}
 
