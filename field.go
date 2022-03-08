@@ -1,32 +1,16 @@
 package groot
 
 import (
-	"reflect"
-
 	"github.com/graphql-go/graphql"
 	"github.com/shreyas44/groot/parser"
 )
 
 func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field {
-	var resolver graphql.FieldResolveFn
-	var subscribe graphql.FieldResolveFn
-
-	graphqlType := getOrCreateType(parserField.Type(), builder)
-
-	// default resolver
-	resolver = func(p graphql.ResolveParams) (interface{}, error) {
-		value := reflect.ValueOf(p.Source)
-		name := parserField.StructField().Name
-		if value.Type().Kind() == reflect.Ptr {
-			value = value.Elem()
-		}
-
-		if _, ok := parserField.Type().(*parser.Enum); ok {
-			return value.FieldByName(name).Convert(reflect.TypeOf("")).Interface(), nil
-		}
-
-		return value.FieldByName(name).Interface(), nil
-	}
+	var (
+		resolver    fieldResolver
+		subscribe   fieldResolver
+		graphqlType = getOrCreateType(parserField.Type(), builder)
+	)
 
 	if parserField.Subscriber() != nil {
 		// subscription resolver
@@ -36,12 +20,11 @@ func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field 
 		}
 
 	} else if parserField.Resolver() != nil {
-		// custom resolver
-		resolver = buildResolver(parserField.Resolver())
+		resolver = buildResolver(parserField)
 	}
 
 	args := graphql.FieldConfigArgument{}
-	for _, parserArgs := range parserField.Arguments() {
+	for _, parserArgs := range parserField.ArgsInput().Arguments() {
 		args[parserArgs.JSONName()] = NewArgument(parserArgs, builder)
 	}
 

@@ -8,17 +8,42 @@ import (
 	"github.com/shreyas44/groot/parser"
 )
 
-type InputValidator interface {
-	Validate() error
+type inputArgsValidator func(v reflect.Value) error
+type fieldResolver = graphql.FieldResolveFn
+
+func buildResolver(field *parser.Field) fieldResolver {
+	if field.Resolver() == nil {
+		return defaultResolver(field)
+	}
+
+	return buildCustomResolver(field.Resolver())
 }
 
-func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
+func defaultResolver(field *parser.Field) func(p graphql.ResolveParams) (interface{}, error) {
+	return func(p graphql.ResolveParams) (interface{}, error) {
+		value := reflect.ValueOf(p.Source)
+		name := field.StructField().Name
+
+		if value.Type().Kind() == reflect.Ptr {
+			value = value.Elem()
+		}
+
+		if _, ok := field.Type().(*parser.Enum); ok {
+			return value.FieldByName(name).Convert(reflect.TypeOf("")).Interface(), nil
+		}
+
+		return value.FieldByName(name).Interface(), nil
+	}
+}
+
+func buildCustomResolver(resolver *parser.Resolver) fieldResolver {
 	parserReturnType := resolver.Field().Type()
 	resolverFunc := resolver.ReflectMethod().Func
+	validateInputArgs := buildInputArgsValidator(resolver.Field().ArgsInput())
 
 	if !resolver.ReturnsThunk() {
 		return func(p graphql.ResolveParams) (interface{}, error) {
-			args, err := makeResolverArgs(resolver, p)
+			args, err := makeResolverArgs(resolver, validateInputArgs, p)
 			if err != nil {
 				return nil, err
 			}
@@ -29,7 +54,7 @@ func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
 	}
 
 	return func(p graphql.ResolveParams) (interface{}, error) {
-		args, err := makeResolverArgs(resolver, p)
+		args, err := makeResolverArgs(resolver, validateInputArgs, p)
 		if err != nil {
 			return nil, err
 		}
@@ -47,11 +72,12 @@ func buildResolver(resolver *parser.Resolver) graphql.FieldResolveFn {
 	}
 }
 
-func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.Type) graphql.FieldResolveFn {
+func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.Type) fieldResolver {
 	subscriberFunc := subscriber.ReflectMethod().Func
+	validateInputArgs := buildInputArgsValidator(subscriber.Field().ArgsInput())
 
 	return func(p graphql.ResolveParams) (interface{}, error) {
-		args, err := makeResolverArgs(subscriber, p)
+		args, err := makeResolverArgs(subscriber, validateInputArgs, p)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +124,7 @@ func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.
 	}
 }
 
-func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]reflect.Value, error) {
+func makeResolverArgs(resolver *parser.Resolver, validateInputArgs inputArgsValidator, p graphql.ResolveParams) ([]reflect.Value, error) {
 	var (
 		resolverMethod = resolver.ReflectMethod()
 		resolverFunc   = resolverMethod.Func
@@ -122,7 +148,6 @@ func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]ref
 		switch arg {
 		case parser.ResolverArgInput:
 			// TODO: figure out a better way to do this instead of marshalling and unmarshalling
-
 			structInterface := reflect.New(funcType.In(1)).Interface()
 			jsonBytes, err := json.Marshal(p.Args)
 			if err != nil {
@@ -130,13 +155,12 @@ func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]ref
 			}
 
 			json.Unmarshal(jsonBytes, &structInterface)
-			if i, ok := structInterface.(InputValidator); ok {
-				if err := i.Validate(); err != nil {
-					return nil, err
-				}
+			inputArgs := reflect.Indirect(reflect.ValueOf(structInterface))
+			if err := validateInputArgs(inputArgs); err != nil {
+				return nil, err
 			}
 
-			args = append(args, reflect.Indirect(reflect.ValueOf(structInterface)))
+			args = append(args, inputArgs)
 		case parser.ResolverArgContext:
 			args = append(args, reflect.ValueOf(p.Context))
 		case parser.ResolverArgInfo:
@@ -145,6 +169,65 @@ func makeResolverArgs(resolver *parser.Resolver, p graphql.ResolveParams) ([]ref
 	}
 
 	return args, nil
+}
+
+func buildInputArgsValidator(input *parser.Input) inputArgsValidator {
+	validators := []inputArgsValidator{}
+
+	if input == nil {
+		return nil
+	}
+
+	if validator := input.Validator(); validator != nil {
+		validator := func(v reflect.Value) error {
+			res := validator.ReflectMethod().Func.Call([]reflect.Value{v})
+			if err := res[0].Interface().(error); err != nil {
+				return err
+			}
+
+			return nil
+		}
+
+		validators = append(validators, validator)
+	}
+
+	for _, arg := range input.Arguments() {
+		if validator := arg.Validator(); validator != nil {
+			validator := func(v reflect.Value) error {
+				field := v.FieldByName(arg.Type().ReflectType().Name())
+				values := []reflect.Value{v, field}
+				res := validator.ReflectMethod().Func.Call(values)
+
+				if err := res[0].Interface().(error); err != nil {
+					return err
+				}
+
+				return nil
+			}
+
+			validators = append(validators, validator)
+		}
+
+		if input, ok := arg.Type().(*parser.Input); ok {
+			validator := buildInputArgsValidator(input)
+			validator = func(v reflect.Value) error {
+				field := v.FieldByName(arg.Type().ReflectType().Name())
+				return validator(field)
+			}
+
+			validators = append(validators, validator)
+		}
+	}
+
+	return func(v reflect.Value) error {
+		for _, validator := range validators {
+			if err := validator(v); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
 }
 
 func makeResolverOutput(p graphql.ResolveParams, parserType parser.Type, response []reflect.Value) (interface{}, error) {
