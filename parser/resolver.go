@@ -31,7 +31,7 @@ type Resolver struct {
 func NewResolver(field *Field) (*Resolver, error) {
 	var (
 		methodName string
-		fieldName  = field.JSONName()
+		fieldName  = field.structField.Name
 		object     = field.Object().ReflectType()
 	)
 
