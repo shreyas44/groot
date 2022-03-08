@@ -36,7 +36,7 @@ func NewScalar(parserScalar *parser.Scalar, builder *SchemaBuilder) *graphql.Sca
 
 	// TODO: description
 	scalar := graphql.NewScalar(graphql.ScalarConfig{
-		Name: parserScalar.Name(),
+		Name: parserScalar.ReflectType().Name(),
 		Serialize: func(value interface{}) interface{} {
 			var v ScalarType
 			if reflect.TypeOf(value).Kind() != reflect.Ptr {

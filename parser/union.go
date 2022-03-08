@@ -6,17 +6,17 @@ import (
 )
 
 type Union struct {
-	reflect.Type
-	members []*Object
+	reflectType reflect.Type
+	members     []*Object
 }
 
 func NewUnion(t reflect.Type) (*Union, error) {
 	union := &Union{
-		Type:    t,
-		members: []*Object{},
+		reflectType: t,
+		members:     []*Object{},
 	}
 
-	if err := validateTypeKind(union); err != nil {
+	if err := validateTypeKind(union.reflectType); err != nil {
 		panic(err)
 	}
 
@@ -49,12 +49,12 @@ func (u *Union) Members() []*Object {
 }
 
 func (u *Union) ReflectType() reflect.Type {
-	return u.Type
+	return u.reflectType
 }
 
 func validateUnion(t *Union) error {
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	for i := 0; i < t.reflectType.NumField(); i++ {
+		field := t.reflectType.Field(i)
 		parserType, err := getTypeKind(field.Type)
 		if err != nil {
 			return err
@@ -64,7 +64,7 @@ func validateUnion(t *Union) error {
 			return fmt.Errorf(
 				"got extra field %s on union %s, union types cannot contain any field other than embedded structs and groot.UnionType",
 				field.Name,
-				t.Name(),
+				t.reflectType.Name(),
 			)
 		}
 	}

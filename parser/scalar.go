@@ -10,7 +10,7 @@ const (
 )
 
 type Scalar struct {
-	reflect.Type
+	reflectType reflect.Type
 }
 
 func NewScalar(t reflect.Type) (*Scalar, error) {
@@ -18,11 +18,11 @@ func NewScalar(t reflect.Type) (*Scalar, error) {
 		panic(err)
 	}
 
-	scalar := &Scalar{Type: t}
+	scalar := &Scalar{t}
 	cache.set(t, scalar)
 	return scalar, nil
 }
 
 func (s Scalar) ReflectType() reflect.Type {
-	return s.Type
+	return s.reflectType
 }

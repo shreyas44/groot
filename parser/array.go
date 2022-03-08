@@ -3,8 +3,8 @@ package parser
 import "reflect"
 
 type Array struct {
-	reflect.Type
-	element Type
+	reflectType reflect.Type
+	element     Type
 }
 
 func NewArray(t reflect.Type, isArgument bool) (*Array, error) {
@@ -34,5 +34,5 @@ func (a *Array) Element() Type {
 }
 
 func (a *Array) ReflectType() reflect.Type {
-	return a.Type
+	return a.reflectType
 }

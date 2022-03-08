@@ -6,8 +6,8 @@ import (
 )
 
 type Interface struct {
-	reflect.Type
-	fields []*Field
+	reflectType reflect.Type
+	fields      []*Field
 }
 
 func NewInterface(t reflect.Type) (*Interface, error) {
@@ -35,7 +35,7 @@ func NewInterfaceFromDefinition(t reflect.Type) (*Interface, error) {
 	}
 
 	interface_ := &Interface{
-		Type: t,
+		reflectType: t,
 	}
 
 	cache.set(t, interface_)
@@ -50,7 +50,7 @@ func NewInterfaceFromDefinition(t reflect.Type) (*Interface, error) {
 }
 
 func (i *Interface) Name() string {
-	name := i.Type.Name()
+	name := i.reflectType.Name()
 	name = name[:len(name)-len("Definition")]
 	return name
 }
@@ -60,7 +60,7 @@ func (i *Interface) Fields() []*Field {
 }
 
 func (i *Interface) ReflectType() reflect.Type {
-	return i.Type
+	return i.reflectType
 }
 
 func validateInterface(t reflect.Type) error {

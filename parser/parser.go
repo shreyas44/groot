@@ -27,7 +27,6 @@ var (
 )
 
 type Type interface {
-	reflect.Type
 	ReflectType() reflect.Type
 }
 
@@ -51,12 +50,12 @@ var (
 )
 
 func ParseObject(t reflect.Type) (*Object, error) {
-	t, err := getOrCreateType(t)
+	grootType, err := getOrCreateType(t)
 	if err != nil {
 		return nil, err
 	}
 
-	if object, ok := t.(*Object); ok {
+	if object, ok := grootType.(*Object); ok {
 		return object, nil
 	}
 
@@ -64,12 +63,12 @@ func ParseObject(t reflect.Type) (*Object, error) {
 }
 
 func ParseInputObject(t reflect.Type) (*Input, error) {
-	t, err := getOrCreateArgumentType(t)
+	grootType, err := getOrCreateArgumentType(t)
 	if err != nil {
 		return nil, err
 	}
 
-	if inputObject, ok := t.(*Input); ok {
+	if inputObject, ok := grootType.(*Input); ok {
 		return inputObject, nil
 	}
 
@@ -77,12 +76,12 @@ func ParseInputObject(t reflect.Type) (*Input, error) {
 }
 
 func ParseUnion(t reflect.Type) (*Union, error) {
-	t, err := getOrCreateType(t)
+	grootType, err := getOrCreateType(t)
 	if err != nil {
 		return nil, err
 	}
 
-	if union, ok := t.(*Union); ok {
+	if union, ok := grootType.(*Union); ok {
 		return union, nil
 	}
 
@@ -90,12 +89,12 @@ func ParseUnion(t reflect.Type) (*Union, error) {
 }
 
 func ParseInterface(t reflect.Type) (*Interface, error) {
-	t, err := getOrCreateType(t)
+	grootType, err := getOrCreateType(t)
 	if err != nil {
 		return nil, err
 	}
 
-	if interfaceType, ok := t.(*Interface); ok {
+	if interfaceType, ok := grootType.(*Interface); ok {
 		return interfaceType, nil
 	}
 
@@ -103,12 +102,12 @@ func ParseInterface(t reflect.Type) (*Interface, error) {
 }
 
 func ParseScalar(t reflect.Type) (*Scalar, error) {
-	t, err := getOrCreateType(t)
+	grootType, err := getOrCreateType(t)
 	if err != nil {
 		return nil, err
 	}
 
-	if scalar, ok := t.(*Scalar); ok {
+	if scalar, ok := grootType.(*Scalar); ok {
 		return scalar, nil
 	}
 
@@ -116,12 +115,12 @@ func ParseScalar(t reflect.Type) (*Scalar, error) {
 }
 
 func ParseEnum(t reflect.Type) (*Enum, error) {
-	t, err := getOrCreateType(t)
+	grootType, err := getOrCreateType(t)
 	if err != nil {
 		return nil, err
 	}
 
-	if enum, ok := t.(*Enum); ok {
+	if enum, ok := grootType.(*Enum); ok {
 		return enum, nil
 	}
 

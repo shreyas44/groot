@@ -3,8 +3,8 @@ package parser
 import "reflect"
 
 type Enum struct {
-	reflect.Type
-	values []string
+	reflectType reflect.Type
+	values      []string
 }
 
 func NewEnum(t reflect.Type) (*Enum, error) {
@@ -27,5 +27,5 @@ func (e *Enum) Values() []string {
 }
 
 func (e *Enum) ReflectType() reflect.Type {
-	return e.Type
+	return e.reflectType
 }

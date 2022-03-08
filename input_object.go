@@ -8,17 +8,22 @@ import (
 func NewInputObject(input *parser.Input, builder *SchemaBuilder) *graphql.InputObject {
 	// TODO: description
 	object := graphql.NewInputObject(graphql.InputObjectConfig{
-		Name:   input.Name(),
+		Name:   input.ReflectType().Name(),
 		Fields: graphql.InputObjectConfigFieldMap{},
 	})
 
 	builder.addType(input, object)
 	for _, arg := range input.Arguments() {
-		object.AddFieldConfig(arg.JSONName(), &graphql.InputObjectFieldConfig{
-			Type:         NewArgument(arg, builder).Type,
-			Description:  arg.Description(),
-			DefaultValue: arg.DefaultValue(),
-		})
+		config := &graphql.InputObjectFieldConfig{
+			Type:        NewArgument(arg, builder).Type,
+			Description: arg.Description(),
+		}
+
+		if arg.DefaultValue() != "" {
+			config.DefaultValue = arg.DefaultValue()
+		}
+
+		object.AddFieldConfig(arg.JSONName(), config)
 	}
 
 	return object
