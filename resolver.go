@@ -76,6 +76,10 @@ func newInputArgsValidator(input *parser.Input) inputArgsValidator {
 }
 
 func newFieldResolver(field *parser.Field) fieldResolver {
+	if field.Subscriber() != nil {
+		return newSubsriberFieldResolver(field)
+	}
+
 	if field.Resolver() == nil {
 		return newDefaultFieldResolver(field)
 	}
@@ -83,7 +87,13 @@ func newFieldResolver(field *parser.Field) fieldResolver {
 	return newCustomFieldResolver(field.Resolver())
 }
 
-func newDefaultFieldResolver(field *parser.Field) func(p graphql.ResolveParams) (interface{}, error) {
+func newSubsriberFieldResolver(field *parser.Field) fieldSubscriber {
+	return func(p graphql.ResolveParams) (interface{}, error) {
+		return p.Source, nil
+	}
+}
+
+func newDefaultFieldResolver(field *parser.Field) fieldResolver {
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		value := reflect.ValueOf(p.Source)
 		name := field.StructField().Name

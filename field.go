@@ -7,20 +7,12 @@ import (
 
 func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field {
 	var (
-		resolver    fieldResolver
 		subscribe   fieldSubscriber
 		graphqlType = getOrCreateType(parserField.Type(), builder)
 	)
 
 	if parserField.Subscriber() != nil {
-		// subscription resolver
 		subscribe = newFieldSubscriber(parserField.Subscriber(), parserField.Type())
-		resolver = func(p graphql.ResolveParams) (interface{}, error) {
-			return p.Source, nil
-		}
-
-	} else {
-		resolver = newFieldResolver(parserField)
 	}
 
 	args := graphql.FieldConfigArgument{}
@@ -32,7 +24,7 @@ func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field 
 		Name:              parserField.JSONName(),
 		Type:              graphqlType,
 		Description:       parserField.Description(),
-		Resolve:           resolver,
+		Resolve:           newFieldResolver(parserField),
 		DeprecationReason: parserField.DeprecationReason(),
 		Args:              args,
 	}
