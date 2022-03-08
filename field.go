@@ -8,19 +8,19 @@ import (
 func NewField(parserField *parser.Field, builder *SchemaBuilder) *graphql.Field {
 	var (
 		resolver    fieldResolver
-		subscribe   fieldResolver
+		subscribe   fieldSubscriber
 		graphqlType = getOrCreateType(parserField.Type(), builder)
 	)
 
 	if parserField.Subscriber() != nil {
 		// subscription resolver
-		subscribe = buildSubscriptionResolver(parserField.Subscriber(), parserField.Type())
+		subscribe = newFieldSubscriber(parserField.Subscriber(), parserField.Type())
 		resolver = func(p graphql.ResolveParams) (interface{}, error) {
 			return p.Source, nil
 		}
 
 	} else if parserField.Resolver() != nil {
-		resolver = buildResolver(parserField)
+		resolver = newFieldResolver(parserField)
 	}
 
 	args := graphql.FieldConfigArgument{}

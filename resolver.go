@@ -10,16 +10,76 @@ import (
 
 type inputArgsValidator func(v reflect.Value) error
 type fieldResolver = graphql.FieldResolveFn
+type fieldSubscriber = graphql.FieldResolveFn
 
-func buildResolver(field *parser.Field) fieldResolver {
-	if field.Resolver() == nil {
-		return defaultResolver(field)
+func newInputArgsValidator(input *parser.Input) inputArgsValidator {
+	validators := []inputArgsValidator{}
+
+	if input == nil {
+		return nil
 	}
 
-	return buildCustomResolver(field.Resolver())
+	if validator := input.Validator(); validator != nil {
+		validator := func(v reflect.Value) error {
+			res := validator.ReflectMethod().Func.Call([]reflect.Value{v})
+			if err := res[0].Interface().(error); err != nil {
+				return err
+			}
+
+			return nil
+		}
+
+		validators = append(validators, validator)
+	}
+
+	for _, arg := range input.Arguments() {
+		if validator := arg.Validator(); validator != nil {
+			validator := func(v reflect.Value) error {
+				field := v.FieldByName(arg.Type().ReflectType().Name())
+				values := []reflect.Value{v, field}
+				res := validator.ReflectMethod().Func.Call(values)
+
+				if err := res[0].Interface().(error); err != nil {
+					return err
+				}
+
+				return nil
+			}
+
+			validators = append(validators, validator)
+		}
+
+		if input, ok := arg.Type().(*parser.Input); ok {
+			validator := newInputArgsValidator(input)
+			validator = func(v reflect.Value) error {
+				field := v.FieldByName(arg.Type().ReflectType().Name())
+				return validator(field)
+			}
+
+			validators = append(validators, validator)
+		}
+	}
+
+	return func(v reflect.Value) error {
+		for _, validator := range validators {
+			if err := validator(v); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
 }
 
-func defaultResolver(field *parser.Field) func(p graphql.ResolveParams) (interface{}, error) {
+func newFieldResolver(field *parser.Field) fieldResolver {
+	if field.Resolver() == nil {
+		return newDefaultFieldResolver(field)
+	}
+
+	return newCustomFieldResolver(field.Resolver())
+}
+
+func newDefaultFieldResolver(field *parser.Field) func(p graphql.ResolveParams) (interface{}, error) {
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		value := reflect.ValueOf(p.Source)
 		name := field.StructField().Name
@@ -36,10 +96,10 @@ func defaultResolver(field *parser.Field) func(p graphql.ResolveParams) (interfa
 	}
 }
 
-func buildCustomResolver(resolver *parser.Resolver) fieldResolver {
+func newCustomFieldResolver(resolver *parser.Resolver) fieldResolver {
 	parserReturnType := resolver.Field().Type()
 	resolverFunc := resolver.ReflectMethod().Func
-	validateInputArgs := buildInputArgsValidator(resolver.Field().ArgsInput())
+	validateInputArgs := newInputArgsValidator(resolver.Field().ArgsInput())
 
 	if !resolver.ReturnsThunk() {
 		return func(p graphql.ResolveParams) (interface{}, error) {
@@ -72,9 +132,9 @@ func buildCustomResolver(resolver *parser.Resolver) fieldResolver {
 	}
 }
 
-func buildSubscriptionResolver(subscriber *parser.Subscriber, parserType parser.Type) fieldResolver {
+func newFieldSubscriber(subscriber *parser.Subscriber, parserType parser.Type) fieldResolver {
 	subscriberFunc := subscriber.ReflectMethod().Func
-	validateInputArgs := buildInputArgsValidator(subscriber.Field().ArgsInput())
+	validateInputArgs := newInputArgsValidator(subscriber.Field().ArgsInput())
 
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		args, err := makeResolverArgs(subscriber, validateInputArgs, p)
@@ -169,65 +229,6 @@ func makeResolverArgs(resolver *parser.Resolver, validateInputArgs inputArgsVali
 	}
 
 	return args, nil
-}
-
-func buildInputArgsValidator(input *parser.Input) inputArgsValidator {
-	validators := []inputArgsValidator{}
-
-	if input == nil {
-		return nil
-	}
-
-	if validator := input.Validator(); validator != nil {
-		validator := func(v reflect.Value) error {
-			res := validator.ReflectMethod().Func.Call([]reflect.Value{v})
-			if err := res[0].Interface().(error); err != nil {
-				return err
-			}
-
-			return nil
-		}
-
-		validators = append(validators, validator)
-	}
-
-	for _, arg := range input.Arguments() {
-		if validator := arg.Validator(); validator != nil {
-			validator := func(v reflect.Value) error {
-				field := v.FieldByName(arg.Type().ReflectType().Name())
-				values := []reflect.Value{v, field}
-				res := validator.ReflectMethod().Func.Call(values)
-
-				if err := res[0].Interface().(error); err != nil {
-					return err
-				}
-
-				return nil
-			}
-
-			validators = append(validators, validator)
-		}
-
-		if input, ok := arg.Type().(*parser.Input); ok {
-			validator := buildInputArgsValidator(input)
-			validator = func(v reflect.Value) error {
-				field := v.FieldByName(arg.Type().ReflectType().Name())
-				return validator(field)
-			}
-
-			validators = append(validators, validator)
-		}
-	}
-
-	return func(v reflect.Value) error {
-		for _, validator := range validators {
-			if err := validator(v); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
 }
 
 func makeResolverOutput(p graphql.ResolveParams, parserType parser.Type, response []reflect.Value) (interface{}, error) {
