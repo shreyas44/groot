@@ -6,6 +6,7 @@ import (
 
 type Input struct {
 	reflectType reflect.Type
+	validator   *InputValidator
 	arguments   []*Argument
 }
 
@@ -26,12 +27,26 @@ func NewInput(t reflect.Type) (*Input, error) {
 		return nil, err
 	}
 
+	validator, err := NewInputValidator(input)
+	if err != nil {
+		return nil, err
+	}
+
+	input.validator = validator
 	input.arguments = arguments
 	return input, nil
 }
 
 func (i *Input) Arguments() []*Argument {
+	if i == nil {
+		return []*Argument{}
+	}
+
 	return i.arguments
+}
+
+func (i *Input) Validator() *InputValidator {
+	return i.validator
 }
 
 func (i *Input) ReflectType() reflect.Type {

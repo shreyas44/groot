@@ -7,6 +7,7 @@ import (
 
 type Argument struct {
 	structField  reflect.StructField
+	validator    *ArgumentValidator
 	input        *Input
 	type_        Type
 	jsonName     string
@@ -36,11 +37,17 @@ func NewArgument(input *Input, field reflect.StructField) (*Argument, error) {
 		return nil, err
 	}
 
+	validator, err := NewArgumentValidator(argument)
+	if err != nil {
+		return nil, err
+	}
+
+	argument.validator = validator
 	argument.type_ = type_
 	return argument, nil
 }
 
-func (arg *Argument) ArgType() Type {
+func (arg *Argument) Type() Type {
 	return arg.type_
 }
 
@@ -64,7 +71,13 @@ func (arg *Argument) DefaultValue() string {
 	return arg.defaultValue
 }
 
-func (arg *Argument) ImplementsType() {}
+func (arg *Argument) Validator() *ArgumentValidator {
+	return arg.validator
+}
+
+func (arg *Argument) StructField() reflect.StructField {
+	return arg.structField
+}
 
 func validateArgumentType(arg *Argument) error {
 	kind, err := getTypeKind(arg.structField.Type)

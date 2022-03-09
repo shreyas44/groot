@@ -6,7 +6,7 @@ import (
 )
 
 func NewArgument(parserArg *parser.Argument, builder *SchemaBuilder) *graphql.ArgumentConfig {
-	graphqlType := getOrCreateType(parserArg.ArgType(), builder)
+	graphqlType := getOrCreateType(parserArg.Type(), builder)
 	argument := &graphql.ArgumentConfig{
 		Type:        graphqlType,
 		Description: parserArg.Description(),
