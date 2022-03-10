@@ -28,10 +28,6 @@ func NewArgument(input *Input, field reflect.StructField) (*Argument, error) {
 		defaultValue: field.Tag.Get("default"),
 	}
 
-	if err := validateArgumentType(argument); err != nil {
-		return nil, err
-	}
-
 	type_, err := getOrCreateArgumentType(field.Type)
 	if err != nil {
 		return nil, err
@@ -79,45 +75,25 @@ func (arg *Argument) StructField() reflect.StructField {
 	return arg.structField
 }
 
-func validateArgumentType(arg *Argument) error {
-	kind, err := getTypeKind(arg.structField.Type)
-	if err != nil {
-		return err
-	}
-
-	switch kind {
-	case KindInterface, KindUnion, KindInterfaceDefinition:
-		return fmt.Errorf(
-			"argument type %s not supported for field %s on struct %s \nif you think this is a mistake please open an issue at github.com/shreyas44/groot",
-			arg.structField.Type.Name(),
-			arg.structField.Name,
-			arg.Input().reflectType.Name(),
-		)
-	}
-
-	return nil
-}
-
 func getOrCreateArgumentType(t reflect.Type) (Type, error) {
-	parserType, ok := cache.get(t)
-	if ok {
-		kind, err := getTypeKind(t)
-		if err != nil {
-			return nil, err
-		}
-
-		switch kind {
-		case KindInterface, KindUnion, KindInterfaceDefinition:
-			err := fmt.Errorf("")
-			return nil, err
-		}
-
-		return parserType, nil
-	}
-
+	unupportedErr := fmt.Errorf("interface and union not supported for argument type")
 	kind, err := getTypeKind(t)
 	if err != nil {
 		return nil, err
+	}
+
+	parserType, ok := cache.get(t)
+	if ok {
+		switch kind {
+		case KindObject:
+			if _, ok := parserType.(*Input); ok {
+				return parserType, nil
+			}
+		case KindInterface, KindUnion, KindInterfaceDefinition:
+			return nil, unupportedErr
+		default:
+			return parserType, nil
+		}
 	}
 
 	switch kind {
@@ -132,7 +108,7 @@ func getOrCreateArgumentType(t reflect.Type) (Type, error) {
 	case KindNullable:
 		return NewNullable(t, true)
 	case KindInterface, KindUnion, KindInterfaceDefinition:
-		return nil, fmt.Errorf("interface and union not supported for argument type")
+		return nil, unupportedErr
 	}
 
 	panic("parser: unexpected error occurred")
