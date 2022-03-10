@@ -62,14 +62,21 @@ func validateTypeKind(t reflect.Type, expected ...Kind) error {
 }
 
 func getOrCreateType(t reflect.Type) (Type, error) {
-	parserType, ok := cache.get(t)
-	if ok {
-		return parserType, nil
-	}
-
 	kind, err := getTypeKind(t)
 	if err != nil {
 		return nil, err
+	}
+
+	parserType, ok := cache.get(t)
+	if ok {
+		switch kind {
+		case KindObject:
+			if _, ok := parserType.(*Object); ok {
+				return parserType, nil
+			}
+		default:
+			return parserType, nil
+		}
 	}
 
 	switch kind {

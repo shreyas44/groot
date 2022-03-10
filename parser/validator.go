@@ -55,8 +55,10 @@ func (v *InputValidator) ReflectMethod() reflect.Method {
 
 func validateArgValidator(method reflect.Method, arg *Argument) error {
 	errorInterface := reflect.TypeOf((*error)(nil)).Elem()
+	numIn := method.Type.NumIn()
+	numOut := method.Type.NumOut()
 
-	if method.Type.NumIn() != 2 || method.Type.In(1) != arg.structField.Type {
+	if numIn != 2 || (numIn > 1 && method.Type.In(1) != arg.structField.Type) {
 		return fmt.Errorf(
 			"method %s on struct %s expected to have 1 argument of type (%s)",
 			method.Name,
@@ -65,7 +67,7 @@ func validateArgValidator(method reflect.Method, arg *Argument) error {
 		)
 	}
 
-	if method.Type.NumOut() != 1 || method.Type.Out(0) != errorInterface {
+	if numOut != 1 || (numOut > 0 && method.Type.Out(0) != errorInterface) {
 		return fmt.Errorf(
 			"method %s on struct %s expected to return only error",
 			method.Name,
@@ -97,5 +99,3 @@ func validateInputValidator(method reflect.Method) error {
 
 	return nil
 }
-
-// TODO: validate return type
